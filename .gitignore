@@ -1,0 +1,17 @@
+# Dataset and downloaded files
+sift/
+sift.tar.gz
+
+# Pre-computed models and arrays
+*.npy
+*.joblib
+
+# Output directories
+figures/
+
+# Python caches
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
