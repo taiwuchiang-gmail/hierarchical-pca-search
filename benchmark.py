@@ -4,6 +4,9 @@ import os
 from sklearn.decomposition import PCA
 import joblib
 import matplotlib.pyplot as plt
+import tarfile
+import urllib.request
+from tqdm import tqdm
 
 # --- Data Handling Functions ---
 
@@ -14,6 +17,26 @@ def ivecs_read(fname):
 
 def fvecs_read(fname):
     return ivecs_read(fname).view('float32')
+
+def download_and_extract_sift(path='.'):
+    sift_dir = os.path.join(path, 'sift')
+    if os.path.exists(sift_dir):
+        return sift_dir
+    print("SIFT1M dataset not found. Downloading (this may take a minute)...")
+    url = 'ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz'
+    tar_path = os.path.join(path, 'sift.tar.gz')
+    try:
+        with tqdm(unit='B', unit_scale=True, unit_divisor=1024, miniters=1, desc="sift.tar.gz") as t:
+            urllib.request.urlretrieve(url, tar_path, reporthook=lambda b, bs, ts: t.update(b * bs - t.n))
+        print("\nDownload complete. Extracting...")
+        with tarfile.open(tar_path, 'r:gz') as tar:
+            tar.extractall(path=path)
+        os.remove(tar_path)
+        print("Extraction complete.")
+    except Exception as e:
+        print(f"An error occurred during download: {e}")
+        return None
+    return sift_dir
 
 # --- Optimized Search Algorithm Implementations ---
 
@@ -106,17 +129,29 @@ def visualize_pruning_effectiveness(avg_stats, component_levels):
     print("\nGenerated 'figures/pruning_effectiveness.png' for the manuscript.")
 
 def run_benchmark_multiple_queries():
-    sift_dir = './sift' # Assumes downloaded from your original script
+    sift_dir = download_and_extract_sift()
     if not os.path.exists(sift_dir):
-        print("Please run the original script once to download SIFT1M.")
         return
 
     pca_model_path = 'pca_sift.joblib'
     transformed_dataset_path = 'sift_base_pca.npy'
 
-    print("Loading pre-computed PCA model and dataset...")
-    base_vectors_pca = np.load(transformed_dataset_path)
-    pca = joblib.load(pca_model_path)
+    if os.path.exists(pca_model_path) and os.path.exists(transformed_dataset_path):
+        print("Loading pre-computed PCA model and dataset...")
+        base_vectors_pca = np.load(transformed_dataset_path)
+        pca = joblib.load(pca_model_path)
+    else:
+        print("\nPCA model/data not found. Starting one-time indexing process...")
+        base_vectors_raw = fvecs_read(os.path.join(sift_dir, 'sift_base.fvecs'))
+        print("Fitting PCA model on 1,000,000 vectors (this will take a moment)...")
+        pca = PCA(n_components=128)
+        pca.fit(base_vectors_raw)
+        print("Transforming dataset into PCA space...")
+        base_vectors_pca = pca.transform(base_vectors_raw)
+        print("Saving PCA model and transformed dataset to disk...")
+        joblib.dump(pca, pca_model_path)
+        np.save(transformed_dataset_path, base_vectors_pca)
+
     query_vectors_raw = fvecs_read(os.path.join(sift_dir, 'sift_query.fvecs'))
     
     # Let's benchmark over 100 queries for statistical significance
