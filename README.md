@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This repository contains the official implementation for the paper:  
-**"A Hierarchical Pruning Algorithm for Fast, Exact Nearest Neighbor Search in High-Dimensional Spaces"** (VLDB '25 / arXiv 2025).
+**"A Hierarchical Pruning Algorithm for Fast, Exact Nearest Neighbor Search in High-Dimensional Spaces"** (VLDB '26 / Zenodo 2026).
 
 ## Overview
 
@@ -53,7 +53,7 @@ If you use this code in your research, please cite our paper:
   title={A Hierarchical Pruning Algorithm for Fast, Exact Nearest Neighbor Search in High-Dimensional Spaces},
   author={Chiang, Tai-Wu},
   publisher={Zenodo},
-  year={2025},
+  year={2026},
   doi={10.5281/zenodo.21387359},
   url={https://doi.org/10.5281/zenodo.21387359}
 }
