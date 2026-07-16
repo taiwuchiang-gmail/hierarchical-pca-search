@@ -1,6 +1,6 @@
 # Hierarchical PCA Pruning for Exact Nearest Neighbor Search
 
-[![arXiv](https://img.shields.io/badge/arXiv-Pending-b31b1b.svg)](https://arxiv.org/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21387359.svg)](https://doi.org/10.5281/zenodo.21387359)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This repository contains the official implementation for the paper:  
@@ -52,8 +52,10 @@ If you use this code in your research, please cite our paper:
 @article{chiang2025hierarchical,
   title={A Hierarchical Pruning Algorithm for Fast, Exact Nearest Neighbor Search in High-Dimensional Spaces},
   author={Chiang, Tai-Wu},
-  journal={arXiv preprint arXiv:XXXX.XXXXX},
-  year={2025}
+  publisher={Zenodo},
+  year={2025},
+  doi={10.5281/zenodo.21387359},
+  url={https://doi.org/10.5281/zenodo.21387359}
 }
 ```
 
