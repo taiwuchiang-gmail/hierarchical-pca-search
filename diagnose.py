@@ -95,9 +95,55 @@ def cascade_1nn(base_pca, query_pca, levels):
     return best_idx, survivors + [len(candidates)]
 
 
+# --- Beyond-covariance diagnostics (tier 2) ---------------------------------
+
+def kurt_sqdep(Z):
+    """Mean excess kurtosis of PCA components + mean |corr(z_i^2, z_j^2)|.
+
+    kurt: marginal non-Gaussianity per component (Gaussian = 0).
+    sqdep: joint dependence PCA cannot remove (noise floor ~ sqrt(2/n));
+    values well above the floor mean structure exists beyond the covariance
+    -- the kind a ball (k-means) level can potentially exploit.
+    """
+    d = Z - Z.mean(0)
+    m2 = (d ** 2).mean(0)
+    kurt = float(np.mean((d ** 4).mean(0) / (m2 ** 2 + 1e-12) - 3.0))
+    Z2 = d ** 2
+    Z2 = Z2 - Z2.mean(0)
+    den = np.sqrt((Z2 ** 2).sum(0))
+    den[den == 0] = 1
+    C = (Z2.T @ Z2) / np.outer(den, den)
+    sqdep = float(np.mean(np.abs(C[~np.eye(C.shape[1], dtype=bool)])))
+    return kurt, sqdep
+
+
+# --- Ball-level trial (tier 3): measure, don't predict ----------------------
+
+def ball_level_trial(base_raw, queries_raw, levels):
+    """Fit a HybridIndex on the sample and MEASURE what the ball (k-means)
+    level adds over the PCA-only cascade. Returns dict of measured stats."""
+    from hybrid_search import HybridIndex
+    idx = HybridIndex(levels=levels).fit(base_raw)
+    t_p = t_h = 0.0
+    ball_surv = []
+    for q in queries_raw:
+        t0 = time.perf_counter()
+        _, dp, _ = idx.query(q, use_ball=False)
+        t_p += time.perf_counter() - t0
+        t0 = time.perf_counter()
+        _, dh, hs = idx.query(q, use_ball=True)
+        t_h += time.perf_counter() - t0
+        assert dp == dh, "exactness violated in ball trial!"
+        ball_surv.append(hs[1] / hs[0])
+    return dict(k=len(idx.C),
+                ball_surv=float(np.mean(ball_surv)),
+                ms_pca=t_p / len(queries_raw) * 1000,
+                ms_hyb=t_h / len(queries_raw) * 1000)
+
+
 # --- Diagnostic -------------------------------------------------------------
 
-def diagnose(X, levels, n_queries=100, name="data", plot=None):
+def diagnose(X, levels, n_queries=100, name="data", plot=None, ball=True):
     n, d = X.shape
     levels = [k for k in levels if k < d]
     print(f"\n=== {name}:  {n:,} vectors, {d} dims,  cascade {levels} ===")
@@ -114,12 +160,25 @@ def diagnose(X, levels, n_queries=100, name="data", plot=None):
     r95 = int(np.searchsorted(cum, 0.95) + 1)
     print(f"    dims for 95% variance: {r95} / {d}")
 
+    # Tier 2: structure BEYOND covariance (invisible to the curve above)
+    kurt, sq = kurt_sqdep(X_pca)
+    floor = (2.0 / n) ** 0.5
+    beyond = sq > 2.5 * floor or abs(kurt) > 1.0
+    print(f"\n  Beyond-covariance structure (invisible to the eigen curve):")
+    print(f"    kurt(PCA) = {kurt:+.2f} (Gaussian = 0)   "
+          f"sqdep = {sq:.4f} (noise floor ~ {floor:.4f})")
+    print("    -> " + ("non-Gaussian structure detected -- a k-means/ball "
+                       "level may exploit it" if beyond else
+                       "none detected -- data is ~Gaussian given its "
+                       "covariance"))
+
     n_queries = min(n_queries, n // 10)
     rng = np.random.default_rng(0)
     q_idx = rng.choice(n, n_queries, replace=False)
     mask = np.ones(n, bool)
     mask[q_idx] = False
     base, queries = X_pca[mask], X_pca[q_idx]
+    base_raw, queries_raw = X[mask], X[q_idx]        # for the ball trial
 
     t_h = t_b = 0.0
     all_surv, mismatches = [], 0
@@ -146,6 +205,35 @@ def diagnose(X, levels, n_queries=100, name="data", plot=None):
     print(f"    wall-clock speedup vs vectorized brute force: {speed:.1f}x "
           f"(in-RAM sample; out-of-core I/O gain tracks the fetch %)")
 
+    # Tier 3: measure what a ball (k-means) level actually adds. Statistics
+    # nominate, measurement decides -- the trial runs the real hybrid cascade.
+    ball_verdict = None
+    if ball:
+        try:
+            bt = ball_level_trial(base_raw.astype(np.float32),
+                                  queries_raw.astype(np.float32), levels)
+            gain = bt['ms_pca'] / max(bt['ms_hyb'], 1e-9)
+            print(f"\n  Ball-level trial (k-means k={bt['k']}, exact "
+                  f"triangle-inequality bounds):")
+            print(f"    ball stage prunes to {bt['ball_surv'] * 100:.2f}% "
+                  f"before any PCA stage")
+            print(f"    PCA-only {bt['ms_pca']:.1f} ms/query  vs  "
+                  f"hybrid {bt['ms_hyb']:.1f} ms/query  "
+                  f"({gain:.1f}x from the ball level)")
+            if gain > 1.25:
+                ball_verdict = (f"ADD -- measured {gain:.1f}x on top of the "
+                                f"PCA cascade" +
+                                (" (non-Gaussian structure harvested)"
+                                 if beyond else
+                                 " (cheap prefilter; bounds only moderately "
+                                 "tight)"))
+            else:
+                ball_verdict = ("SKIP -- no measured gain; ball bounds too "
+                                "loose on this data")
+        except ImportError:
+            print("\n  (hybrid_search.py not found -- ball-level trial "
+                  "skipped)")
+
     frac = surv[-1] / nb
     if frac < 0.005 and speed > 2:
         verdict = "STRONG  -- highly correlated data; pruning will pay off."
@@ -154,7 +242,9 @@ def diagnose(X, levels, n_queries=100, name="data", plot=None):
     else:
         verdict = ("POOR    -- dimensions too uncorrelated (flat eigenvalue "
                    "decay); bounds are loose, use brute force / ANN instead.")
-    print(f"\n  VERDICT: {verdict}")
+    print(f"\n  VERDICT: PCA levels: {verdict}")
+    if ball_verdict:
+        print(f"           Ball level: {ball_verdict}")
 
     if plot:
         try:
@@ -195,9 +285,14 @@ def demo(levels):
     medium = rng.normal(size=(n, 48)) @ rng.normal(size=(48, d)) \
         + 0.5 * rng.normal(size=(n, d))
     poor = rng.normal(size=(n, d))
+    centers = rng.normal(size=(512, d))
+    clustered = centers[rng.integers(0, 512, n)] \
+        + 0.05 * rng.normal(size=(n, d))
     diagnose(strong, levels, name="high correlation (latent dim 8)")
     diagnose(medium, levels, name="medium correlation (latent dim 48)")
     diagnose(poor, levels, name="no correlation (i.i.d. gaussian)")
+    diagnose(clustered, levels,
+             name="512 tight clusters (flat spectrum, non-Gaussian)")
 
 
 def main():
@@ -208,6 +303,8 @@ def main():
     ap.add_argument('--sample', type=int, default=100_000)
     ap.add_argument('--queries', type=int, default=100)
     ap.add_argument('--plot', default=None)
+    ap.add_argument('--no-ball', action='store_true',
+                    help='skip the k-means ball-level trial')
     args = ap.parse_args()
     levels = sorted({int(k) for k in args.levels.split(',')})
 
@@ -220,7 +317,8 @@ def main():
     X = load_vectors(args.data)
     if len(X) > args.sample:
         X = X[np.random.default_rng(0).choice(len(X), args.sample, replace=False)]
-    diagnose(X, levels, n_queries=args.queries, name=args.data, plot=args.plot)
+    diagnose(X, levels, n_queries=args.queries, name=args.data,
+             plot=args.plot, ball=not args.no_ball)
 
 
 if __name__ == '__main__':

@@ -93,6 +93,45 @@ The left panel is the cause (SIFT's first 8 PCA dims hold 58.5% of the variance 
 strongly correlated dimensions); the right panel is the effect (candidates drop
 four orders of magnitude through the cascade).
 
+## Hybrid index: ball (k-means) bound + PCA cascade
+
+`hybrid_search.py` adds a second, complementary family of exact lower bounds.
+For a point `p` in a k-means cluster with centroid `c` (and stored offline
+distance `d_p = ||p - c||`), the triangle inequality gives:
+
+```
+||q - p||  >=  | ||q - c|| - d_p |
+```
+
+This bound needs **no distance computations at query time** — one gather and
+one subtraction per point, after `k << N` centroid distances. It is exact for
+*any* centers (quality only affects speed, never correctness), and it is tight
+exactly where the PCA bound is loose: clustered / multimodal data. The hybrid
+query runs the ball stage first, then the PCA cascade on the survivors.
+
+```bash
+python hybrid_search.py demo    # PCA-hostile vs PCA-friendly showcase
+python hybrid_search.py sift    # SIFT1M, official queries
+```
+
+Measured on SIFT1M (100 official queries, exactness verified per query):
+
+| method | ms/query | speedup | cascade survivors |
+|---|---|---|---|
+| brute force | 371 | 1.0x | — |
+| PCA-only (the paper) | 187 | 2.0x | 14.7% / 5.2% / 0.8% / 0.06% |
+| **hybrid (ball + PCA)** | **88** | **4.2x** | ball 50.6% -> 14.6% / 5.1% / 0.7% / 0.05% |
+
+On synthetic "many tight clusters" data (flat eigen-spectrum, where the PCA
+cascade alone manages 1.4x) the hybrid reaches **21x** — the two bounds cover
+each other's blind spots.
+
+`diagnose.py` decides whether the ball level is worth adding for *your* data
+with a three-tier funnel: (1) the eigen curve rates the PCA levels, (2)
+kurt(PCA)/sqdep statistics detect structure beyond the covariance, and (3) a
+measured trial of the real hybrid cascade on your sample delivers the verdict
+(`ADD` / `SKIP`), because the statistics nominate but the measurement decides.
+
 ## Understanding the Code
 
 The core of the logic is inside `hierarchical_pca_1nn_l2` in `benchmark.py`. 
