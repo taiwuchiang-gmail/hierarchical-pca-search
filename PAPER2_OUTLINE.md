@@ -336,6 +336,7 @@ Johnson et al. 2019 (FAISS).
 |---|---|---|
 | Ball bound exact for any centers | triangle inequality, 2-line proof | §3.3 |
 | SIFT1M: PCA-only 2.7x, ball level = tie (parity) | `bench_faiss_5rep.py` medians, 2026-08-23 | §6.1 |
+| Work counts: pca-only 12.60M terms (10.2x), hybrid 8.67M + 1.0M bound ops, brute/faiss 128M | `count_ops` in hybrid_search.py via bench_faiss_5rep.py | §6.1 Table ops |
 | dtype regime: f64 3.6x vs f32 2.7x, brute 1.86x costlier in f64 | 2x2 decomposition run, 2026-08-23 | §6.1 parity note |
 | Survivor cascade = Paper I Fig. 1 | `hybrid_search.py sift`, survivor column | §6.1 |
 | 13.9x on flat-spectrum clustered data (PCA-only 2.1x) | `hybrid_search.py demo`, parity code | §6.2 |

@@ -76,6 +76,45 @@ def fit_kmeans(X, k, seed=0):
         return C, assign
 
 
+def count_ops(stats, levels, d, n_clusters=0, use_ball=True, probe=PROBE_K):
+    """Exact per-query work counts from the survivor statistics.
+
+    Returns (terms, bound_ops). `terms` counts per-dimension (x-y)^2
+    evaluations -- one full d-dim distance = d terms -- so an exhaustive
+    scan is N*d terms by definition (which also gives the count for any
+    compiled flat-scan library, no instrumentation required). `bound_ops`
+    counts per-point ball-bound evaluations (one gather + one |subtract|
+    each), charged separately because they are cheaper than a term but not
+    free: work accounting must charge the pruning machinery itself.
+    Both are hardware- and implementation-independent.
+    """
+    levels = list(levels)
+    n = stats[0]
+    if use_ball:
+        want = 2 + len(levels)               # [N, ball, one per level]
+        st = list(stats) + [stats[-1]] * (want - len(stats))
+        terms = n_clusters * d + probe * d   # centroid dists + probe
+        bound_ops = float(n)                 # one bound per point
+        entering = st[1]                     # ball survivors enter stage 1
+        for i, k_dims in enumerate(levels):
+            terms += entering * k_dims
+            if i == 0 and entering > probe:
+                terms += probe * d           # radius re-probe
+            entering = st[2 + i]
+        terms += st[-1] * d                  # final full-distance check
+    else:
+        want = 1 + len(levels)               # [N, one per level]
+        st = list(stats) + [stats[-1]] * (want - len(stats))
+        terms = n * levels[0] + probe * d    # stage-1 scan doubles as probe
+        bound_ops = 0.0
+        entering = st[1]
+        for i, k_dims in enumerate(levels[1:]):
+            terms += entering * k_dims
+            entering = st[2 + i]
+        terms += st[-1] * d
+    return float(terms), bound_ops
+
+
 class HybridIndex:
     """Exact 1-NN index: ball bound level + hierarchical PCA cascade."""
 

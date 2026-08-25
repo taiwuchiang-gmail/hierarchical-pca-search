@@ -209,8 +209,20 @@ lower bound, the two families compose freely in one cascade.
 
 \subsection{Complementarity}
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig_bounds.pdf}
+\caption{The two exact bound geometries. Left: the PCA truncation bound is
+the distance between the projections onto the first $k$ principal
+components---tight when variance concentrates along few directions. Right:
+the ball bound $\lVert q-c \rVert - d_p$ from the triangle
+inequality---tight when points huddle near their centroids. Each is loose
+exactly where the other is tight.}
+\label{fig:bounds}
+\end{figure}
+
 PCA truncation is tight iff the eigenvalue spectrum decays steeply---a
-\emph{global, linear} property. The ball bound is tight iff points sit close
+\emph{global, linear} property (Figure~\ref{fig:bounds}, left). The ball bound is tight iff points sit close
 to centroids relative to the spread of $\lVert q - c \rVert$---a
 \emph{local} property that holds for multimodal data and, more generally,
 for data of low intrinsic dimension, where $d_p$ and the centroid distances
@@ -257,8 +269,20 @@ low intrinsic dimension spreads $d_p$ widely, so the bounds bite (pruning to
 ball level is a monotone function of its own pruning rate---survivors of
 3\% $\rightarrow$ $4$--$14\times$; 15--23\% $\rightarrow$ $2$--$3\times$;
 50--59\% $\rightarrow$ parity; 100\% $\rightarrow$ $0.8\times$ (a measured
-loss)---and the trial measures exactly this quantity. No statistic
-substitutes for it.
+loss)---and the trial measures exactly this quantity
+(Figure~\ref{fig:law}). No statistic substitutes for it.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\linewidth]{fig_law.pdf}
+\caption{The measured ball-value law across all eight datasets and trials
+(parity code): the ball level's wall-clock gain over the PCA-only cascade
+is a monotone function of its own pruning rate. The funnel's tier-3 trial
+measures precisely the $x$-axis quantity, which is why it predicts
+full-scale outcomes from a sample---including the negative verdicts below
+the dashed line.}
+\label{fig:law}
+\end{figure}
 
 \section{The Hybrid Algorithm}
 \label{sec:algorithm}
@@ -364,7 +388,20 @@ FAISS-flat, batch-100 & 5.9 & 28$\times$ & (scans 100\%) \\
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:sift} gives the in-RAM picture. The PCA cascade alone reaches
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\linewidth]{fig_cascade.pdf}
+\caption{Candidates remaining after each stage on SIFT1M (log scale,
+average over 100 official queries). The cascade discards four orders of
+magnitude before any full-distance evaluation; the hybrid enters the PCA
+stages with half the population and finishes equally tight. This profile is
+the algorithmic fingerprint: it was invariant under every change of numeric
+type, machine load, and implementation tuning in this paper.}
+\label{fig:cascade}
+\end{figure}
+
+Table~\ref{tab:sift} gives the in-RAM picture, and
+Figure~\ref{fig:cascade} the cascade behind it. The PCA cascade alone reaches
 $2.7\times$; \textbf{the ball level is a wall-clock tie on SIFT}---its
 50\% pruning saves about what its bound computation costs---exactly as the
 sample trial predicts (\textsc{skip}, \S\ref{sec:funnel}). The hybrid's
@@ -372,6 +409,39 @@ SIFT-side value is therefore out-of-core and residency only
 (\S\ref{sec:layout}); the wall-clock case for the ball level rests on
 clustered and low-intrinsic-dimension data (\S\ref{sec:regimes}). The
 survivor cascade reproduces Paper~I exactly.
+
+\begin{table}[t]
+\caption{Hardware-independent work per query on SIFT1M. Terms are
+per-dimension $(x{-}y)^2$ evaluations; bound ops are per-point ball-bound
+evaluations, charged separately. Counts derive analytically from the
+survivor statistics (\texttt{count\_ops} in the repository)---an exhaustive
+scan is $N \cdot d$ terms by definition, so no instrumentation of compiled
+libraries is needed. These columns are identical on every machine and every
+run.}
+\label{tab:ops}
+\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Method & Terms (M) & Bound ops (M) & Terms vs brute \\
+\midrule
+brute / FAISS-flat & 128.0 & --- & 1.0$\times$ \\
+PCA-only~\cite{paper1} & 12.60 & 0 & \textbf{10.2$\times$} \\
+hybrid & 8.67 & 1.00 & 14.8$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:ops} states the same experiment in the primary currency.
+Three things the wall-clock hid become explicit. First, the cascade's
+\emph{algorithmic} reduction is $10.2\times$---machine-free, and invariant
+across every run in this paper, where the millisecond columns wobbled with
+load. Second, FAISS-flat performs $10$--$15\times$ more work than the
+cascade and still wins in-RAM wall-clock: the engineering-versus-algorithm
+separation is now quantitative rather than rhetorical. Third, the hybrid
+cuts terms further ($12.6 \to 8.7$\,M) but adds $1.0$\,M bound operations of
+a different mix (gathers rather than streaming reads)---which is why its
+wall-clock ties PCA-only despite the smaller term count, and why work
+accounting that omits the pruning machinery would mislead.
 
 FAISS \texttt{IndexFlatL2} wins the in-RAM race outright, scanning all
 $10^6$ vectors in 29.3\,ms single-threaded. The gap is fusion, not SIMD:

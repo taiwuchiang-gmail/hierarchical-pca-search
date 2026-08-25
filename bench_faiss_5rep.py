@@ -9,7 +9,7 @@ import time
 import numpy as np
 import faiss
 
-from hybrid_search import fvecs_read, ivecs_read, HybridIndex
+from hybrid_search import fvecs_read, ivecs_read, HybridIndex, count_ops
 
 REPS = 5
 
@@ -84,3 +84,23 @@ for name, _ in CONFIGS:
 print(f"\nspeedups vs numpy-brute median ({med_brute:.1f} ms): "
       + ", ".join(f"{n.split(',')[0]}={med_brute/np.median(times[n]):.1f}x"
                   for n, _ in CONFIGS if n != 'numpy brute, per-query'))
+
+# --- hardware-independent work counts (deterministic, from survivor stats;
+#     an exhaustive scan is N*d terms by definition, so the flat-scan count
+#     needs no instrumentation of compiled libraries) ---
+N, d = base.shape
+brute_terms = float(N) * d
+print(f"\nwork per query (terms = per-dimension (x-y)^2 evaluations):")
+print(f"{'method':>22} {'terms (M)':>10} {'bound ops (M)':>14} "
+      f"{'terms vs brute':>15}")
+print(f"{'brute / faiss-flat':>22} {brute_terms/1e6:>10.1f} {'--':>14} "
+      f"{'1.0x':>15}")
+for name, use_ball in (("pca-only", False), ("hybrid", True)):
+    tot = np.zeros(2)
+    for q in queries:
+        _, _, st = hidx.query(q, use_ball=use_ball)
+        tot += count_ops(st, hidx.levels, d, len(hidx.C), use_ball)
+    terms, bops = tot / len(queries)
+    print(f"{name:>22} {terms/1e6:>10.2f} "
+          f"{(bops/1e6 if bops else 0):>14.2f} "
+          f"{brute_terms/terms:>14.1f}x")
