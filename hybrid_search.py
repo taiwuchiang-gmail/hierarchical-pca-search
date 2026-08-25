@@ -127,12 +127,19 @@ class HybridIndex:
         if use_ball:
             cand = np.flatnonzero(bound * bound < best)       # ball pruning
             stats.append(len(cand))
+            start = 0
         else:
-            cand = np.arange(N)
+            # reuse the stage-1 distances already computed for the probe --
+            # no full-array gather (implementation parity with the ball path)
+            cand = np.flatnonzero(d8 < best)
+            stats.append(len(cand))
+            start = 1
 
         for i, k_dims in enumerate(self.levels):
-            if not len(cand):
-                break
+            if i < start or not len(cand):
+                if not len(cand):
+                    break
+                continue
             dk = ((X[cand, :k_dims] - q[:k_dims]) ** 2).sum(1)
             if i == 0 and use_ball and len(cand) > PROBE_K:
                 # Re-probe: the ball-seeded radius can be loose; tighten it
