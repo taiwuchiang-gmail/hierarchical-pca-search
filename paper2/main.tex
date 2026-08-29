@@ -453,7 +453,37 @@ $1{,}700\times$ fewer full vectors, requires 8--40 resident bytes per vector
 against 512 for any flat scan, and its bounds compose with FAISS-grade
 kernels rather than competing with them (the cascade could drive such a
 kernel over its survivor sets). Disk-resident ANN systems occupy the same
-economics but surrender exactness.
+economics but surrender exactness. Table~\ref{tab:resources} summarizes the
+resulting three-way trade among speed, work, and the machine's most
+expensive resource.
+
+\begin{table}[t]
+\caption{The exactness--speed--work--memory trade-off on SIFT1M (fp32,
+$10^6 \times 128$). Flat scans must hold every vector resident
+(512\,B/vector); the cascades keep only pruning metadata resident and page
+full vectors from storage (\S\ref{sec:layout}): the 8-dimensional sketch
+costs 32\,B/vector, the ball metadata 8\,B/vector. Parentheses give the
+RAM saving relative to a flat scan. The last row situates disk-resident
+ANN systems: their residency (taken from their own reports, not measured
+here) is comparable to the cascades', but they answer the approximate
+problem---the exact-at-cascade-residency quadrant is the one this work
+occupies.}
+\label{tab:resources}
+\small
+\begin{tabular}{@{}lcrrr@{}}
+\toprule
+Method & Exact & ms/query & Terms (M) & Resident RAM \\
+\midrule
+FAISS-flat, batch-100 & yes & 5.9 & 128.0 & 512\,MB \,(1$\times$) \\
+FAISS-flat, 1 thread & yes & 29.3 & 128.0 & 512\,MB \,(1$\times$) \\
+brute (NumPy) & yes & 167.3 & 128.0 & 512\,MB \,(1$\times$) \\
+PCA-only~\cite{paper1} & yes & 61.1 & 12.6 & 32\,MB \,(16$\times$) \\
+hybrid & yes & 62.2 & 8.7\,{\small$+1.0$} & 8--40\,MB \,(13--64$\times$) \\
+\midrule
+IVF / disk ANN~\cite{faiss,diskann,spann} & no & --- & --- & $\sim$8--64\,MB \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \textbf{Why wall-clock is the wrong headline (measured).} Two confounds were
 caught only by interrogating ratio changes. \emph{Numeric type}: sklearn's
