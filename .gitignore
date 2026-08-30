@@ -9,9 +9,13 @@ sift.tar.gz
 # Output directories
 figures/
 
-# Python caches
+# Python caches and build artifacts
 __pycache__/
 *.pyc
+*.egg-info/
+.pytest_cache/
+dist/
+build/
 .venv/
 venv/
 .env

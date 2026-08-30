@@ -1,6 +1,7 @@
 # Hierarchical PCA Pruning for Exact Nearest Neighbor Search
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21387359.svg)](https://doi.org/10.5281/zenodo.21387359)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21387358.svg)](https://doi.org/10.5281/zenodo.21387358)
+[![CI](https://github.com/taiwuchiang-gmail/hierarchical-pca-search/actions/workflows/ci.yml/badge.svg)](https://github.com/taiwuchiang-gmail/hierarchical-pca-search/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This repository contains the official implementation for the paper:  
@@ -13,16 +14,22 @@ Finding the exact nearest neighbor in high-dimensional space is bottlenecked by 
 This repository implements a **Dynamic Top-K Branch and Bound algorithm** using PCA and the L2 Euclidean norm. By evaluating candidates in progressively higher dimensions (8D $\rightarrow$ 16D $\rightarrow$ 32D $\rightarrow$ 64D), the algorithm mathematically guarantees 100% exactness while safely pruning **over 99.9% of the candidate space** before performing a full-dimensional distance calculation.
 
 ### Results on SIFT1M
-* **4.3x reduction** in query latency compared to a fully optimized, vectorized CPU SIMD baseline.
-* **Reduces disk I/O exponentially:** Out of 1,000,000 vectors, an average of only 564 vectors require full 128-D evaluation.
+* **10.2x algorithmic work reduction:** 12.6M per-dimension distance terms per query vs the 128.0M of any exhaustive scan (hardware-independent count; see Paper II for the accounting).
+* **4.3x reduction** in query latency vs a vectorized NumPy brute-force baseline (float64 regime; ~2.7x in float32 — see Paper II for why wall-clock constants differ from work counts).
+* **Reduces disk I/O exponentially:** Out of 1,000,000 vectors, an average of only 564 vectors require full 128-D evaluation, and only 8–40 bytes/vector of metadata must stay resident (vs 512 B/vector for raw vectors).
 
 ## Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/hierarchical-pca-search.git
+git clone https://github.com/taiwuchiang-gmail/hierarchical-pca-search.git
 cd hierarchical-pca-search
-pip install -r requirements.txt
+pip install .
 ```
+
+Only NumPy is required. `pip install ".[full]"` adds the optional extras:
+scikit-learn (faster offline k-means fit; a pure-NumPy fallback is built in),
+matplotlib (diagnostic plots), and joblib/tqdm (used by `benchmark.py`).
+Installation also provides the `pca-diagnose` command-line tool.
 
 ## Quick Start (Benchmarking)
 
@@ -114,17 +121,24 @@ python hybrid_search.py demo    # PCA-hostile vs PCA-friendly showcase
 python hybrid_search.py sift    # SIFT1M, official queries
 ```
 
-Measured on SIFT1M (100 official queries, exactness verified per query):
+Measured on SIFT1M (100 official queries, float32, exactness verified per
+query — Paper II, Table 2):
 
 | method | ms/query | speedup | cascade survivors |
 |---|---|---|---|
-| brute force | 371 | 1.0x | — |
-| PCA-only (the paper) | 187 | 2.0x | 14.7% / 5.2% / 0.8% / 0.06% |
-| **hybrid (ball + PCA)** | **88** | **4.2x** | ball 50.6% -> 14.6% / 5.1% / 0.7% / 0.05% |
+| brute force (NumPy) | 167.3 | 1.0x | — |
+| PCA-only (Paper I) | 61.1 | 2.7x | 14.7% / 5.2% / 0.8% / 0.06% |
+| hybrid (ball + PCA) | 62.2 | 2.7x | ball 50.6% -> 14.6% / 5.1% / 0.7% / 0.05% |
 
-On synthetic "many tight clusters" data (flat eigen-spectrum, where the PCA
-cascade alone manages 1.4x) the hybrid reaches **21x** — the two bounds cover
-each other's blind spots.
+On SIFT the ball level is a wall-clock **tie**: it prunes only ~50% before
+the PCA cascade, and the bound evaluations cost what they save — which is
+exactly what the diagnostic's measured trial predicts (`SKIP`) from a 100k
+sample. Where the data *is* clustered the same level dominates: on "many
+tight clusters" data (flat eigen-spectrum) the hybrid reaches **13.9x** vs
+2.1x for PCA-only, and on latent-dim-8 Gaussian data 5.6x vs 2.1x. The
+ball level's value is monotone in its survivor rate (3% -> 4–14x,
+15–23% -> 2–3x, ~50% -> tie, 100% -> slower); see Paper II (`paper2/`) for
+the full measurements and the hardware-independent work accounting.
 
 `diagnose.py` decides whether the ball level is worth adding for *your* data
 with a three-tier funnel: (1) the eigen curve rates the PCA levels, (2)
@@ -137,20 +151,46 @@ measured trial of the real hybrid cascade on your sample delivers the verdict
 The core of the logic is inside `hierarchical_pca_1nn_l2` in `benchmark.py`. 
 It utilizes a **Top-50 Probe**: at the lowest dimensional representation (8D), it identifies the 50 closest candidates and immediately computes their full 128D distance. The absolute minimum of these 50 becomes a mathematically guaranteed, tight upper-bound radius for pruning the remaining 999,950 vectors.
 
+## Tests
+
+The exactness guarantee is enforced by an automated test suite (no dataset
+download needed — it runs on synthetic data in a few seconds):
+
+```bash
+pip install -e ".[test]"
+pytest
+```
+
+It verifies, per query and on three data regimes (clustered / low-rank /
+i.i.d.), that every query path returns the brute-force nearest neighbor,
+checks the `count_ops` work accounting against hand-computed values, and
+exercises the diagnostic funnel's verdicts. CI runs the suite on every push,
+including once without scikit-learn to cover the pure-NumPy k-means fallback.
+
+## Contributing
+
+Bug reports and pull requests are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md). The one non-negotiable invariant: bound
+quality may affect speed, never correctness.
+
 ## Citation
 
-If you use this code in your research, please cite our paper:
+If you use this code in your research, please cite (the concept DOI always
+resolves to the latest version):
 
 ```bibtex
-@article{chiang2025hierarchical,
+@misc{chiang2026hierarchical,
   title={A Hierarchical Pruning Algorithm for Fast, Exact Nearest Neighbor Search in High-Dimensional Spaces},
   author={Chiang, Tai-Wu},
   publisher={Zenodo},
   year={2026},
-  doi={10.5281/zenodo.21387359},
-  url={https://doi.org/10.5281/zenodo.21387359}
+  doi={10.5281/zenodo.21387358},
+  url={https://doi.org/10.5281/zenodo.21387358}
 }
 ```
 
+The hybrid-bound sequel ("Composable Exact Bounds", Paper II) lives in
+[`paper2/`](paper2/).
+
 ## License
-MIT License
+[MIT](LICENSE)
