@@ -234,15 +234,25 @@ def diagnose(X, levels, n_queries=100, name="data", plot=None, ball=True):
             print("\n  (hybrid_search.py not found -- ball-level trial "
                   "skipped)")
 
+    # Verdict from the MEASURED work ratio, not the survivor fraction: the
+    # same finalist % that is marginal at d=128 is a big win at d=960,
+    # because the cascade's cost is early-stage terms + surv*d full fetches
+    # while brute always pays n*d (GIST: 6.9% finalists = 9x fewer terms).
     frac = surv[-1] / nb
-    if frac < 0.005 and speed > 2:
-        verdict = "STRONG  -- highly correlated data; pruning will pay off."
-    elif frac < 0.05:
+    terms = nb * levels[0] + PROBE_K * d + surv[-1] * d
+    for s, lv in zip(surv[:-1], levels[1:]):
+        terms += s * lv
+    work = nb * d / terms
+    print(f"\n  Work ratio (terms, hardware-independent): brute {nb * d / 1e6:.1f}M"
+          f" / cascade {terms / 1e6:.1f}M = {work:.1f}x reduction")
+    if work > 8 and speed > 2:
+        verdict = f"STRONG  -- tight bounds; {work:.0f}x less work, pruning will pay off."
+    elif work > 2:
         verdict = "MODERATE -- useful gains, especially out-of-core."
     else:
-        verdict = ("POOR    -- dimensions too uncorrelated (flat eigenvalue "
-                   "decay); bounds are loose, use brute force / ANN instead.")
-    print(f"\n  VERDICT: PCA levels: {verdict}")
+        verdict = ("POOR    -- bounds too loose (uncorrelated dimensions); "
+                   "use brute force / ANN instead.")
+    print(f"  VERDICT: PCA levels: {verdict}")
     if ball_verdict:
         print(f"           Ball level: {ball_verdict}")
 

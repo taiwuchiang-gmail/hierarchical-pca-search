@@ -1,6 +1,8 @@
 # Dataset and downloaded files
 sift/
 sift.tar.gz
+gist/
+gist.tar.gz
 
 # Pre-computed models and arrays
 *.npy
