@@ -10,7 +10,7 @@ tags:
   - out-of-core
 authors:
   - name: Tai-Wu Chiang
-    # TODO: add "orcid:" here once registered
+    orcid: 0009-0004-7062-9346
     affiliation: 1
 affiliations:
   - name: Independent Researcher
