@@ -115,8 +115,22 @@ def count_ops(stats, levels, d, n_clusters=0, use_ball=True, probe=PROBE_K):
     return float(terms), bound_ops
 
 
+def _kth_smallest_unique(ev_idx, ev_d, k):
+    """k-th smallest distance over DISTINCT evaluated points.
+
+    The evaluated set can contain the same point twice (probe and re-probe
+    overlap); the k-th order statistic of a multiset with duplicates is
+    biased low, which would over-prune -- an exactness bug, not a speed
+    issue. min() (the 1-NN special case) is duplicate-invariant; the k-th
+    order statistic is not.
+    """
+    uniq, first = np.unique(ev_idx, return_index=True)
+    ud = ev_d[first]
+    return float(np.partition(ud, k - 1)[k - 1]), uniq, ud
+
+
 class HybridIndex:
-    """Exact 1-NN index: ball bound level + hierarchical PCA cascade."""
+    """Exact k-NN index: ball bound level + hierarchical PCA cascade."""
 
     def __init__(self, levels=(8, 16, 32, 64), n_clusters=None):
         self.levels = list(levels)
@@ -145,32 +159,43 @@ class HybridIndex:
     def _transform(self, q):
         return ((q.astype(np.float32) - self.mean) @ self.rot)
 
-    def query(self, q_raw, use_ball=True):
-        """Exact 1-NN. Returns (index, dist_sq, survivors-per-stage)."""
+    def query(self, q_raw, use_ball=True, k=1):
+        """Exact k-NN. For k=1 returns (index, dist_sq, survivors-per-stage);
+        for k>1 the first two are arrays sorted by distance.
+
+        The pruning radius is the k-th smallest exact distance among the
+        points evaluated so far (probe, re-probe): the k-th order statistic
+        over a subset can only overestimate the true one, so any point whose
+        lower bound reaches it provably cannot enter the k-NN set. Requires
+        k < n (at least one prunable point).
+        """
         q = self._transform(q_raw)
         X, N = self.X, len(self.X)
+        if not 1 <= k < N:
+            raise ValueError(f"k must be in [1, {N - 1}], got {k}")
+        n_probe = min(max(PROBE_K, k), N - 1)
         stats = [N]
 
         if use_ball:
             dq = np.sqrt(((self.C - q) ** 2).sum(1))          # k centroid dists
             bound = np.abs(dq[self.assign] - self.d_p)        # N subtractions
-            probe = np.argpartition(bound, PROBE_K)[:PROBE_K]
+            probe = np.argpartition(bound, n_probe)[:n_probe]
         else:
             d8 = ((X[:, :self.levels[0]] - q[:self.levels[0]]) ** 2).sum(1)
-            probe = np.argpartition(d8, PROBE_K)[:PROBE_K]
+            probe = np.argpartition(d8, n_probe)[:n_probe]
 
-        exact = ((X[probe] - q) ** 2).sum(1)
-        best = float(exact.min())
-        best_idx = int(probe[exact.argmin()])
+        ev_idx = probe                                        # evaluated so far
+        ev_d = ((X[probe] - q) ** 2).sum(1)
+        radius, _, _ = _kth_smallest_unique(ev_idx, ev_d, k)  # k-th best
 
         if use_ball:
-            cand = np.flatnonzero(bound * bound < best)       # ball pruning
+            cand = np.flatnonzero(bound * bound < radius)     # ball pruning
             stats.append(len(cand))
             start = 0
         else:
             # reuse the stage-1 distances already computed for the probe --
             # no full-array gather (implementation parity with the ball path)
-            cand = np.flatnonzero(d8 < best)
+            cand = np.flatnonzero(d8 < radius)
             stats.append(len(cand))
             start = 1
 
@@ -180,28 +205,37 @@ class HybridIndex:
                     break
                 continue
             dk = ((X[cand, :k_dims] - q[:k_dims]) ** 2).sum(1)
-            if i == 0 and use_ball and len(cand) > PROBE_K:
+            if i == 0 and use_ball and len(cand) > n_probe:
                 # Re-probe: the ball-seeded radius can be loose; tighten it
                 # from the best first-stage candidates before pruning.
-                top = np.argpartition(dk, PROBE_K)[:PROBE_K]
-                exact = ((X[cand[top]] - q) ** 2).sum(1)
-                j = int(exact.argmin())
-                if exact[j] < best:
-                    best, best_idx = float(exact[j]), int(cand[top[j]])
-            cand = cand[dk < best]
+                top = np.argpartition(dk, n_probe)[:n_probe]
+                ev_idx = np.concatenate([ev_idx, cand[top]])
+                ev_d = np.concatenate([ev_d, ((X[cand[top]] - q) ** 2).sum(1)])
+                radius, _, _ = _kth_smallest_unique(ev_idx, ev_d, k)
+            cand = cand[dk < radius]
             stats.append(len(cand))
 
         if len(cand):
-            fin = ((X[cand] - q) ** 2).sum(1)
-            j = int(fin.argmin())
-            if fin[j] < best:
-                best, best_idx = float(fin[j]), int(cand[j])
-        return best_idx, best, stats
+            ev_idx = np.concatenate([ev_idx, cand])
+            ev_d = np.concatenate([ev_d, ((X[cand] - q) ** 2).sum(1)])
 
-    def brute(self, q_raw):
+        # probe / re-probe / finalists may overlap: dedupe, take k smallest
+        _, uniq, ud = _kth_smallest_unique(ev_idx, ev_d, k)
+        sel = np.argpartition(ud, k - 1)[:k]
+        order = np.argsort(ud[sel], kind="stable")
+        out_idx, out_d = uniq[sel][order], ud[sel][order]
+        if k == 1:
+            return int(out_idx[0]), float(out_d[0]), stats
+        return out_idx.astype(np.int64), out_d, stats
+
+    def brute(self, q_raw, k=1):
         q = self._transform(q_raw)
         d2 = ((self.X - q) ** 2).sum(1)
-        return int(d2.argmin()), float(d2.min())
+        if k == 1:
+            return int(d2.argmin()), float(d2.min())
+        sel = np.argpartition(d2, k - 1)[:k]
+        order = np.argsort(d2[sel], kind="stable")
+        return sel[order].astype(np.int64), d2[sel][order]
 
 
 def bench(X, queries, name, n_clusters=None):

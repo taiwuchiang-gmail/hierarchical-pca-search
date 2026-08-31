@@ -121,6 +121,11 @@ python hybrid_search.py demo    # PCA-hostile vs PCA-friendly showcase
 python hybrid_search.py sift    # SIFT1M, official queries
 ```
 
+Exact **k-NN** is supported: `idx.query(q, k=10)` returns the k nearest
+neighbors (sorted, verified exact against brute force in the test suite).
+The dynamic pruning radius generalizes from the best evaluated distance to
+the k-th best over distinct evaluated points.
+
 Measured on SIFT1M (100 official queries, float32, exactness verified per
 query — Paper II, Table 2):
 
