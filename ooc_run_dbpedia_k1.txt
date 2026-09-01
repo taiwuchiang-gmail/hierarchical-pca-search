@@ -1,0 +1,6 @@
+dbpedia_openai_1M.npy: 999,900 x 1536, k=1, levels [32, 80, 176, 352], O_DIRECT cold reads
+
+     arm  ms/query  speedup  MB/query  reads   (exact on all checked queries)
+    scan      5385     1.0x      5860    733
+   point     318.3      17x      8.03   1028
+   block     417.5      13x    374.44     36

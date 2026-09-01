@@ -242,7 +242,10 @@ def disk(name):
 if __name__ == "__main__":
     cmd, name = sys.argv[1], sys.argv[2]
     if cmd == "build":
-        build(name, sys.argv[3] if len(sys.argv) > 3 else "auto")
+        lv = sys.argv[3] if len(sys.argv) > 3 else "auto"
+        if lv != "auto":
+            lv = tuple(int(x) for x in lv.split(","))
+        build(name, lv)
     elif cmd == "run":
         run(name, int(sys.argv[3]) if len(sys.argv) > 3 else 1)
     elif cmd == "disk":

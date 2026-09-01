@@ -1,0 +1,6 @@
+deep10M.npy: 9,999,900 x 96, k=1, levels [8, 24, 40, 48], O_DIRECT cold reads
+
+     arm  ms/query  speedup  MB/query  reads   (exact on all checked queries)
+    scan      3574     1.0x      3664    458
+   point    1541.8       2x    209.00  50356
+   block    1377.7       3x    780.06    223

@@ -1,0 +1,1 @@
+sift device: sequential 2.04 GiB/s (8 MiB O_DIRECT), random 4 KiB 80 us

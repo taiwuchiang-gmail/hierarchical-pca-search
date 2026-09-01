@@ -1,0 +1,6 @@
+gist: 1,000,000 x 960, k=1, levels [8, 16, 40, 120], O_DIRECT cold reads
+
+     arm  ms/query  speedup  MB/query  reads   (exact on all checked queries)
+    scan      3006     1.0x      3663    458
+   point     420.9       7x     90.68  12379
+   block     750.6       4x   1223.63    158

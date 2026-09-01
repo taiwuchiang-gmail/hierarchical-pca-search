@@ -1,0 +1,6 @@
+sift: 1,000,000 x 128, k=1, levels [8, 16, 40], O_DIRECT cold reads
+
+     arm  ms/query  speedup  MB/query  reads   (exact on all checked queries)
+    scan       413     1.0x       488     62
+   point      90.9       5x     13.21   3381
+   block      91.1       5x     56.58    112

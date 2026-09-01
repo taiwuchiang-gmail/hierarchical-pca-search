@@ -22,3 +22,5 @@ build/
 venv/
 .env
 *.fbin
+ooc_*.bin
+ooc_*.npz
