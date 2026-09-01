@@ -20,4 +20,5 @@ dist/
 build/
 .venv/
 venv/
-.env*.fbin
+.env
+*.fbin
