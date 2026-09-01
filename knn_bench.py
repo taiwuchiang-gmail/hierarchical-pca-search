@@ -23,12 +23,13 @@ N_QUERIES = 100
 
 def run(name="sift", levels=(8, 16, 32, 64)):
     if name.endswith(".npy"):
-        X = np.load(name)
+        X = np.load(name, mmap_mode="r")     # 6 GB file: don't double-load
         rng = np.random.default_rng(0)
         q_idx = rng.choice(len(X), N_QUERIES, replace=False)
         mask = np.ones(len(X), bool)
         mask[q_idx] = False
-        base, queries, gt = X[mask], X[q_idx], None
+        base, queries, gt = np.asarray(X[mask]), np.asarray(X[q_idx]), None
+        del X
     else:
         base = fvecs_read(f"{name}/{name}_base.fvecs")
         queries = fvecs_read(f"{name}/{name}_query.fvecs")[:N_QUERIES]
@@ -39,6 +40,8 @@ def run(name="sift", levels=(8, 16, 32, 64)):
     idx = HybridIndex(levels=levels, n_clusters=1024).fit(base)
     print(f"{name.upper()}: {n:,} x {d}, {len(queries)} queries, "
           f"levels {idx.levels}; fit {time.perf_counter() - t0:.1f}s")
+    if gt is None:
+        del base                 # only needed for the ground-truth tie check
 
     for k in K_VALUES:
         probe = max(PROBE_K, k)

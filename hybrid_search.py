@@ -136,13 +136,18 @@ class HybridIndex:
         self.levels = "auto" if levels == "auto" else list(levels)
         self.n_clusters = n_clusters
 
-    def fit(self, X):
-        X = X.astype(np.float32)
+    def fit(self, X, chunk=100_000):
+        X = np.asarray(X, np.float32)
         n, d = X.shape
 
+        # accumulate the covariance in float64 chunks: a full float64 copy
+        # of a 1M x 1536 matrix is 12 GB, which alone OOMs a 32 GB machine
         self.mean = X.mean(0)
-        Xc = (X - self.mean).astype(np.float64)
-        cov = (Xc.T @ Xc) / (n - 1)
+        cov = np.zeros((d, d), np.float64)
+        for i in range(0, n, chunk):
+            Xc = (X[i:i + chunk] - self.mean).astype(np.float64)
+            cov += Xc.T @ Xc
+        cov /= (n - 1)
         eigval, eigvec = np.linalg.eigh(cov)
         if self.levels == "auto":
             from diagnose import pick_levels     # lazy: avoids a hard dep
@@ -151,7 +156,9 @@ class HybridIndex:
             self.levels = pick_levels(cum)
         self.levels = [k for k in self.levels if k < d]
         self.rot = eigvec[:, ::-1].astype(np.float32)     # descending variance
-        self.X = ((X - self.mean) @ self.rot).astype(np.float32)
+        self.X = np.empty((n, d), np.float32)             # rotate in chunks
+        for i in range(0, n, chunk):
+            self.X[i:i + chunk] = (X[i:i + chunk] - self.mean) @ self.rot
 
         k = self.n_clusters or int(np.clip(np.sqrt(n), 64, 4096))
         self.C, self.assign = fit_kmeans(self.X, k)
