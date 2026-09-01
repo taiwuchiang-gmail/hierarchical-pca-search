@@ -171,6 +171,12 @@ class HybridIndex:
     def _transform(self, q):
         return ((q.astype(np.float32) - self.mean) @ self.rot)
 
+    def _exact(self, ids, q):
+        """Exact squared distances for the given point ids. The only place
+        full-D vectors are touched -- an out-of-core index overrides this
+        with disk reads and the pruning logic above it stays identical."""
+        return ((self.X[ids] - q) ** 2).sum(1)
+
     def query(self, q_raw, use_ball=True, k=1):
         """Exact k-NN. For k=1 returns (index, dist_sq, survivors-per-stage);
         for k>1 the first two are arrays sorted by distance.
@@ -197,7 +203,7 @@ class HybridIndex:
             probe = np.argpartition(d8, n_probe)[:n_probe]
 
         ev_idx = probe                                        # evaluated so far
-        ev_d = ((X[probe] - q) ** 2).sum(1)
+        ev_d = self._exact(probe, q)
         radius, _, _ = _kth_smallest_unique(ev_idx, ev_d, k)  # k-th best
 
         if use_ball:
@@ -222,17 +228,19 @@ class HybridIndex:
                 # from the best first-stage candidates before pruning.
                 top = np.argpartition(dk, n_probe)[:n_probe]
                 ev_idx = np.concatenate([ev_idx, cand[top]])
-                ev_d = np.concatenate([ev_d, ((X[cand[top]] - q) ** 2).sum(1)])
+                ev_d = np.concatenate([ev_d, self._exact(cand[top], q)])
                 radius, _, _ = _kth_smallest_unique(ev_idx, ev_d, k)
             cand = cand[dk < radius]
             stats.append(len(cand))
 
         if len(cand):
             ev_idx = np.concatenate([ev_idx, cand])
-            ev_d = np.concatenate([ev_d, ((X[cand] - q) ** 2).sum(1)])
+            ev_d = np.concatenate([ev_d, self._exact(cand, q)])
 
         # probe / re-probe / finalists may overlap: dedupe, take k smallest
         _, uniq, ud = _kth_smallest_unique(ev_idx, ev_d, k)
+        self.last_fetched = uniq       # points needing full-D vectors: in an
+        # out-of-core deployment this set (and only this set) hits the disk
         sel = np.argpartition(ud, k - 1)[:k]
         order = np.argsort(ud[sel], kind="stable")
         out_idx, out_d = uniq[sel][order], ud[sel][order]

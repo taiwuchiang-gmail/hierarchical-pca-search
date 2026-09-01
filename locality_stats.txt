@@ -1,0 +1,8 @@
+sift: 1,000,000 x 128, levels [8, 16, 32, 64], 1024 clusters; fit 22s
+  full-D fetch set: 583 pts (0.06%) in 52/1024 clusters (uniform placement would hit ~444)
+  bytes/query: full scan 488 MB | point-fetch (orig order, 4K pages) 2.3 MB | block-fetch (cluster-major) 26.6 MB
+  I/O reduction vs scan: point 215x, block 18x; reads/query: point 583 small vs block 52 large
+gist: 1,000,000 x 960, levels [8, 16, 40, 120], 1024 clusters; fit 250s
+  full-D fetch set: 12,356 pts (1.24%) in 130/1024 clusters (uniform placement would hit ~1024)
+  bytes/query: full scan 3,662 MB | point-fetch (orig order, 4K pages) 48.3 MB | block-fetch (cluster-major) 994.7 MB
+  I/O reduction vs scan: point 76x, block 4x; reads/query: point 12,356 small vs block 130 large
