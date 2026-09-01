@@ -6,3 +6,11 @@ gist: 1,000,000 x 960, levels [8, 16, 40, 120], 1024 clusters; fit 250s
   full-D fetch set: 12,356 pts (1.24%) in 130/1024 clusters (uniform placement would hit ~1024)
   bytes/query: full scan 3,662 MB | point-fetch (orig order, 4K pages) 48.3 MB | block-fetch (cluster-major) 994.7 MB
   I/O reduction vs scan: point 76x, block 4x; reads/query: point 12,356 small vs block 130 large
+dbpedia_openai_1M.npy: 999,900 x 1536, levels [32, 80, 176, 352], 1024 clusters; fit 212s
+  full-D fetch set: 1,014 pts (0.10%) in 27/1024 clusters (uniform placement would hit ~644)
+  bytes/query: full scan 5,859 MB | point-fetch (orig order, 4K pages) 5.9 MB | block-fetch (cluster-major) 270.4 MB
+  I/O reduction vs scan: point 986x, block 22x; reads/query: point 1,014 small vs block 27 large
+deep10M.npy: 9,999,900 x 96, levels [8, 24, 40, 48], 1024 clusters; fit 456s
+  full-D fetch set: 50,341 pts (0.50%) in 195/1024 clusters (uniform placement would hit ~1024)
+  bytes/query: full scan 3,662 MB | point-fetch (orig order, 4K pages) 196.6 MB | block-fetch (cluster-major) 678.0 MB
+  I/O reduction vs scan: point 19x, block 5x; reads/query: point 50,341 small vs block 195 large
