@@ -31,7 +31,7 @@ wall-clock advantage is irrelevant and work/byte counts govern.
 | # | Gap | Task | Status |
 |---|-----|------|--------|
 | 1 | 1-NN only | k-NN support (k-th-best radius) + exactness tests | **DONE 2026-08-31**; measured (sift/gist_knn_results.txt): k≤10 wins, k=100 loses in-RAM wall-clock on both datasets — paper leads k≤10 + out-of-core fetch% |
-| 2 | One dataset (SIFT1M) | GIST1M (960-D), DEEP1M/10M (96-D), one modern embedding set (768–1536-D); funnel + full benchmark on each | **GIST1M DONE 2026-08-31**: funnel STRONG (9.3× on sample), full 1M = 4.7×/13.1× work at k=1, exact; ball SKIP predicted & confirmed. DEEP + embeddings todo |
+| 2 | One dataset (SIFT1M) | GIST1M (960-D), DEEP1M/10M (96-D), one modern embedding set (768–1536-D); funnel + full benchmark on each | **GIST1M + DBpedia-OpenAI-1M DONE 2026-08-31** (auto levels): GIST 6.2×/20.8× work, DBpedia (1536-D ada-002) 6.0×/12.8× work, both exact at k=1 — **embedding risk resolved POSITIVE**; wall-clock gain GROWS with d. Required eigen-curve level selection (pick_levels, a797b44). DEEP1M/10M todo |
 | 3 | Out-of-core claim unmeasured | Two-tier on-disk layout (resident metadata + cluster-major blocks), cold-cache protocol (drop_caches, needs sudo terminal), measured latency vs mmap flat scan | todo — the paper's headline |
 | 4 | Weak baselines | ADSampling (SIGMOD'23) + successors (DADE/PDX-class); FAISS-flat already measured | todo |
 | 5 | k choice unjustified | Re-add the measured k-sweep (data exists, was reverted; see §6.1 note) | todo, 1 edit |
