@@ -1,0 +1,30 @@
+
+=== dbpedia_openai_1M.npy:  100,000 vectors, 1536 dims,  cascade [32, 64, 128, 256] ===
+
+  Eigenvalue decay (cumulative explained variance = bound tightness):
+    first   32 dims:  31.2%  |############
+    first   64 dims:  45.8%  |##################
+    first  128 dims:  63.2%  |#########################
+    first  256 dims:  79.3%  |################################
+    dims for 95% variance: 664 / 1536
+
+  Beyond-covariance structure (invisible to the eigen curve):
+    kurt(PCA) = +0.33 (Gaussian = 0)   sqdep = 0.0366 (noise floor ~ 0.0045)
+    -> non-Gaussian structure detected -- a k-means/ball level may exploit it
+
+  Measured pruning cascade (avg over 100 queries, base 99,900):
+    after   32D:     85,894 candidates  ( 85.98%)
+    after   64D:     55,207 candidates  ( 55.26%)
+    after  128D:     12,830 candidates  ( 12.84%)
+    after  256D:        637 candidates  (  0.64%)
+    full-D fetches (probe+finalists): 0.69% of base
+    exactness: 100/100 match brute force
+    wall-clock speedup vs vectorized brute force: 5.0x (in-RAM sample; out-of-core I/O gain tracks the fetch %)
+
+  Ball-level trial (k-means k=316, exact triangle-inequality bounds):
+    ball stage prunes to 99.95% before any PCA stage
+    PCA-only 86.7 ms/query  vs  hybrid 95.4 ms/query  (0.9x from the ball level)
+
+  Work ratio (terms, hardware-independent): brute 153.4M / cascade 20.1M = 7.6x reduction
+  VERDICT: PCA levels: MODERATE -- useful gains, especially out-of-core.
+           Ball level: SKIP -- no measured gain; ball bounds too loose on this data
