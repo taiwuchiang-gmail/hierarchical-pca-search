@@ -133,18 +133,23 @@ class HybridIndex:
     """Exact k-NN index: ball bound level + hierarchical PCA cascade."""
 
     def __init__(self, levels=(8, 16, 32, 64), n_clusters=None):
-        self.levels = list(levels)
+        self.levels = "auto" if levels == "auto" else list(levels)
         self.n_clusters = n_clusters
 
     def fit(self, X):
         X = X.astype(np.float32)
         n, d = X.shape
-        self.levels = [k for k in self.levels if k < d]
 
         self.mean = X.mean(0)
         Xc = (X - self.mean).astype(np.float64)
         cov = (Xc.T @ Xc) / (n - 1)
         eigval, eigvec = np.linalg.eigh(cov)
+        if self.levels == "auto":
+            from diagnose import pick_levels     # lazy: avoids a hard dep
+            ev = np.clip(eigval[::-1], 0, None)   # eigh returns ascending
+            cum = np.cumsum(ev) / max(ev.sum(), 1e-30)
+            self.levels = pick_levels(cum)
+        self.levels = [k for k in self.levels if k < d]
         self.rot = eigvec[:, ::-1].astype(np.float32)     # descending variance
         self.X = ((X - self.mean) @ self.rot).astype(np.float32)
 

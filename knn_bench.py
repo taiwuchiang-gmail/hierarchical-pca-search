@@ -4,8 +4,10 @@ Extends the 1-NN measurement (Paper II, Table 2) to k in {1, 10, 100}.
 Exactness is asserted per query against brute force; k=100 is additionally
 checked against the official ground truth (which ships exactly 100 NN).
 
-Usage: python knn_bench.py [dataset]   (dataset dir with texmex fvecs
-files, default sift; e.g. `python knn_bench.py gist`)
+Usage: python knn_bench.py [dataset] [levels]
+    dataset: texmex dir (sift, gist) or a .npy file (100 rows held out as
+             queries, no ground-truth check); default sift
+    levels:  'auto' (eigen-curve selection) or e.g. 8,16,32,64 (default)
 """
 
 import sys
@@ -19,16 +21,24 @@ K_VALUES = (1, 10, 100)
 N_QUERIES = 100
 
 
-def run(name="sift"):
-    base = fvecs_read(f"{name}/{name}_base.fvecs")
-    queries = fvecs_read(f"{name}/{name}_query.fvecs")[:N_QUERIES]
-    gt = ivecs_read(f"{name}/{name}_groundtruth.ivecs")[:N_QUERIES]
+def run(name="sift", levels=(8, 16, 32, 64)):
+    if name.endswith(".npy"):
+        X = np.load(name)
+        rng = np.random.default_rng(0)
+        q_idx = rng.choice(len(X), N_QUERIES, replace=False)
+        mask = np.ones(len(X), bool)
+        mask[q_idx] = False
+        base, queries, gt = X[mask], X[q_idx], None
+    else:
+        base = fvecs_read(f"{name}/{name}_base.fvecs")
+        queries = fvecs_read(f"{name}/{name}_query.fvecs")[:N_QUERIES]
+        gt = ivecs_read(f"{name}/{name}_groundtruth.ivecs")[:N_QUERIES]
     n, d = base.shape
 
     t0 = time.perf_counter()
-    idx = HybridIndex(n_clusters=1024).fit(base)
-    print(f"{name.upper()}: {n:,} x {d}, {len(queries)} queries; "
-          f"fit {time.perf_counter() - t0:.1f}s")
+    idx = HybridIndex(levels=levels, n_clusters=1024).fit(base)
+    print(f"{name.upper()}: {n:,} x {d}, {len(queries)} queries, "
+          f"levels {idx.levels}; fit {time.perf_counter() - t0:.1f}s")
 
     for k in K_VALUES:
         probe = max(PROBE_K, k)
@@ -48,7 +58,7 @@ def run(name="sift"):
                 else:
                     assert np.array_equal(h_d, b_d), \
                         f"exactness violated ({method}, k={k}, q{qi})"
-                    if k == gt.shape[1]:
+                    if gt is not None and k == gt.shape[1]:
                         # exact distance ties at the k-th boundary make the
                         # k-NN set non-unique (SIFT/GIST are integer-valued
                         # descriptors -- ties are real, e.g. SIFT q13):
@@ -82,4 +92,6 @@ def run(name="sift"):
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "sift")
+    lv = sys.argv[2] if len(sys.argv) > 2 else "8,16,32,64"
+    lv = "auto" if lv == "auto" else tuple(int(x) for x in lv.split(","))
+    run(sys.argv[1] if len(sys.argv) > 1 else "sift", levels=lv)
