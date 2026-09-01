@@ -24,3 +24,4 @@ venv/
 *.fbin
 ooc_*.bin
 ooc_*.npz
+adsampling_ref/
