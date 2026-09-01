@@ -1,0 +1,8 @@
+pca-only reference: 55.4 ms/query (median of 3 reps)
+
+    k  fit_s ball_surv%  ms/query   (exact on all queries, 3 reps)
+    8      4      81.20      73.2
+   64      5      66.18      63.8
+  256      7      56.68      57.9
+ 1024     15      49.08      54.2
+ 4096     47      43.03      50.3
