@@ -1,0 +1,30 @@
+
+=== gist/gist_base.fvecs:  100,000 vectors, 960 dims,  cascade [8, 16, 32, 64] ===
+
+  Eigenvalue decay (cumulative explained variance = bound tightness):
+    first    8 dims:  47.8%  |###################
+    first   16 dims:  58.3%  |#######################
+    first   32 dims:  67.6%  |###########################
+    first   64 dims:  77.4%  |###############################
+    dims for 95% variance: 303 / 960
+
+  Beyond-covariance structure (invisible to the eigen curve):
+    kurt(PCA) = +3.88 (Gaussian = 0)   sqdep = 0.1492 (noise floor ~ 0.0045)
+    -> non-Gaussian structure detected -- a k-means/ball level may exploit it
+
+  Measured pruning cascade (avg over 100 queries, base 99,900):
+    after    8D:     47,184 candidates  ( 47.23%)
+    after   16D:     30,877 candidates  ( 30.91%)
+    after   32D:     17,744 candidates  ( 17.76%)
+    after   64D:      6,885 candidates  (  6.89%)
+    full-D fetches (probe+finalists): 6.94% of base
+    exactness: 100/100 match brute force
+    wall-clock speedup vs vectorized brute force: 5.4x (in-RAM sample; out-of-core I/O gain tracks the fetch %)
+
+  Ball-level trial (k-means k=316, exact triangle-inequality bounds):
+    ball stage prunes to 95.47% before any PCA stage
+    PCA-only 52.5 ms/query  vs  hybrid 61.1 ms/query  (0.9x from the ball level)
+
+  Work ratio (terms, hardware-independent): brute 95.9M / cascade 10.3M = 9.3x reduction
+  VERDICT: PCA levels: STRONG  -- tight bounds; 9x less work, pruning will pay off.
+           Ball level: SKIP -- no measured gain; ball bounds too loose on this data
