@@ -170,8 +170,10 @@ def ball_level_trial(base_raw, queries_raw, levels):
 
 def diagnose(X, levels=None, n_queries=100, name="data", plot=None, ball=True):
     n, d = X.shape
-    levels = [k for k in levels if k < d]
-    print(f"\n=== {name}:  {n:,} vectors, {d} dims,  cascade {levels} ===")
+    if levels is not None:
+        levels = [k for k in levels if k < d]
+    print(f"\n=== {name}:  {n:,} vectors, {d} dims,  "
+          f"cascade {'auto' if levels is None else levels} ===")
     if n < 2000:
         print("WARNING: <2000 vectors; results will be noisy.")
 

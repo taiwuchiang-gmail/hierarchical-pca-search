@@ -1,0 +1,19 @@
+DEEP10M.NPY: 9,999,900 x 96, 100 queries, levels [8, 24, 40, 48]; fit 448.0s
+
+  k=1 (exact on all 100 queries)
+     method  ms/query  speedup   Mterms  Mbound  stage1-surv
+      brute    1269.3     1.0x   959.99    0.00
+   pca-only    1036.3     1.2x   244.02    0.00       44.25%
+     hybrid    1244.9     1.0x   221.63   10.00       90.88%
+
+  k=10 (exact on all 100 queries)
+     method  ms/query  speedup   Mterms  Mbound  stage1-surv
+      brute    1356.3     1.0x   959.99    0.00
+   pca-only    1805.4     0.8x   485.97    0.00       66.09%
+     hybrid    1986.5     0.7x   416.94   10.00       97.72%
+
+  k=100 (exact on all 100 queries)
+     method  ms/query  speedup   Mterms  Mbound  stage1-surv
+      brute    1365.3     1.0x   959.99    0.00
+   pca-only    4415.3     0.3x  1506.01    0.00       94.41%
+     hybrid    3272.3     0.4x   872.96   10.00      100.00%
