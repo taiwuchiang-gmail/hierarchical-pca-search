@@ -358,6 +358,28 @@ Johnson et al. 2019 (FAISS).
 4. **Fig 4:** the four-regime verdict table as a small-multiples chart, or
    keep as a table. Data exists.
 
+## Version 2 additions (2026-09-02) — claim → evidence map
+
+V2 = 8 pp; every v1 [GAP] closed except larger-than-RAM OOC. New claims:
+
+| Claim | Evidence | Where |
+|---|---|---|
+| Fixed ladder (8,16,32,64) misreads 1536-D embeddings (68% surv, 1.3×); eigen-curve levels recover them (0.64% finalists, 7.6×) | dbpedia_funnel.txt vs dbpedia_funnel_deep.txt | §4 tier 1 |
+| pick_levels A/B: SIFT 8.2 vs 8.5 (tie), GIST 15.2 vs 9.3, DBpedia 8.2 vs 7.6 | 6-way funnel A/B 2026-08-31 | §4 |
+| Verdict = work ratio, not survivor frac (GIST 6.9% = 9.3× at d=960) | diagnose.py fix ae3e164 | §4 |
+| Full-scale 1-NN: GIST 6.2×/20.8×, DBpedia 6.0×/12.8×, DEEP10M 1.2×/3.9×; gain grows with d | gist_knn_auto.txt, dbpedia_knn_auto.txt, deep_knn_auto.txt | §6.2 Table 5 |
+| k-NN: k-th-order-statistic radius, duplicate-safe; wins k≤10, loses k=100 everywhere | tests/test_knn.py + *_knn*.txt | §5.3, §6.3 Table 6 |
+| SIFT ties are real (q13, d²=61334 twice) | knn_bench.py tie check | §5.3 |
+| k-means k-sweep: √N at the knee (surv 81→43%, fit 4→47 s) | ksweep_sift.txt e1c1a67 | §5.1 |
+| OOC cold reads: DBpedia 17×/730× fewer bytes, GIST 7×, SIFT 7×, DEEP 2–3×; all exact | ooc_run_*.txt cc9db25 (O_DIRECT, 2.04 GiB/s / 80 µs device) | §6.6 Table 8 |
+| Fetch-set locality: DBpedia 1,014 pts in 27/1024 clusters (uniform ~644) | locality_stats.txt | §6.6 |
+| k-means valuable as partitioner even when SKIP as bound | same + ooc runs | §5.4, §6.6 |
+| OOC-optimal cascade is deeper than in-RAM-optimal (SIFT 4-level 588 fetches/61 ms vs 3-level 3,381/91 ms) | ooc_run_sift_k1_4lvl.txt vs ooc_run_sift_k1.txt | §6.6 |
+| ADSampling parity port: mixed in-RAM (SIFT 33.0 vs 12.6, DBpedia 49.8 vs 119.6) | adsampling_bench.py e420244 | §6.7 Table 9 |
+| ADS recall: perfect at k=1 under f64 GT (earlier 0.98 = f32 artifact); 1 real miss GIST k=10 | 7a512e8 rerun | §6.7 |
+| ADS Δd=32 floor → touches every vector → full-scan bytes OOC | terms ≈ 32n on SIFT/DEEP | §6.7 |
+| Funnel extrapolates at scale: GIST 15.2×→20.8×, DEEP 3.6×→3.9×, ball SKIP ×4 confirmed | funnel txts vs full runs | §6.5 |
+
 ## Open decisions for Tai
 
 1. Venue: Zenodo (self-published, same as Paper I — no blockers) vs. a
