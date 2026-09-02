@@ -3,9 +3,11 @@
 **Decision (2026-08-31):** target PVLDB Vol. 20 (VLDB 2027), *regular
 research track*, with a single 12-page paper merging Paper I (hierarchical
 PCA pruning) and Paper II (composable bounds + self-configuring funnel).
-JOSS submission dropped. The Zenodo records (10.5281/zenodo.21387358,
-10.5281/zenodo.22199956) stay up as preprints — PVLDB review is
-single-blind, preprints are fine and will be disclosed.
+JOSS submission dropped. The Zenodo records (Paper I concept
+10.5281/zenodo.21387358; Paper II concept 10.5281/zenodo.22199955,
+v2 published 2026-09-02 as 10.5281/zenodo.22258679) stay up as
+preprints — PVLDB review is single-blind, preprints are fine and will
+be disclosed.
 
 ## Logistics
 
