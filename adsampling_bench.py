@@ -110,12 +110,17 @@ def main(name, k=1, eps0=2.1):
         ids, dd = query_scan(Xr, qr, k, eps0, io)
         times.append(time.perf_counter() - t0)
         dims.append(io[0])
-        # ground truth on the rotated data (orthogonal: same distances)
+        # Ground truth, tie- and precision-safe: the f32 norms identity
+        # nominates candidates, f64 rescoring decides. Judging on the
+        # f32 identity alone miscalls near-duplicate points (d2 ~ 0,
+        # catastrophic cancellation) as recall failures.
         d2 = norms - 2.0 * (Xr @ qr) + qr @ qr
-        sel = np.sort(np.partition(d2, k - 1)[:k])
-        # tie-tolerant recall: match on distances, not ids
-        # rtol loose enough for f32 norms-identity vs incremental rounding
-        rec.append(np.isclose(np.sort(dd), sel, rtol=1e-4).mean())
+        cand = np.argpartition(d2, min(200, n - 1))[:200]
+        q64 = qr.astype(np.float64)
+        c64 = ((Xr[cand].astype(np.float64) - q64) ** 2).sum(1)
+        kth = np.partition(c64, k - 1)[k - 1]       # true k-th distance
+        ret = ((Xr[ids].astype(np.float64) - q64) ** 2).sum(1)
+        rec.append(np.mean(ret <= kth * (1 + 1e-9) + 1e-12))
 
     terms = np.mean(dims)
     print(f"  ms/query (scan only): {np.median(times) * 1000:.1f}")
