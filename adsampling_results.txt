@@ -1,31 +1,41 @@
-### sift k=1 eps0=2.1
 sift: 1,000,000 x 128, k=1, eps0=2.1, delta_d=32, block=4096; rotate 0s
-  ms/query (scan only): 152.7
+  ms/query (scan only): 107.4
   dims touched/query: 32.97M terms (brute = 128.0M; reduction 3.9x)
   recall@1: 1.0000 (0/100 queries imperfect)
-### gist k=1 eps0=2.1
-gist: 1,000,000 x 960, k=1, eps0=2.1, delta_d=32, block=4096; rotate 6s
-  ms/query (scan only): 279.2
-  dims touched/query: 44.52M terms (brute = 960.0M; reduction 21.6x)
-  recall@1: 1.0000 (0/100 queries imperfect)
-### dbpedia_openai_1M.npy k=1 eps0=2.1
-dbpedia_openai_1M.npy: 999,900 x 1536, k=1, eps0=2.1, delta_d=32, block=4096; rotate 16s
-  ms/query (scan only): 313.1
-  dims touched/query: 49.79M terms (brute = 1535.8M; reduction 30.8x)
-  recall@1: 1.0000 (0/100 queries imperfect)
-### deep10M.npy k=1 eps0=2.1
-deep10M.npy: 9,999,900 x 96, k=1, eps0=2.1, delta_d=32, block=4096; rotate 8s
-  ms/query (scan only): 1034.5
-  dims touched/query: 325.82M terms (brute = 960.0M; reduction 2.9x)
-  recall@1: 1.0000 (0/100 queries imperfect)
-### sift k=10 eps0=2.1
 sift: 1,000,000 x 128, k=10, eps0=2.1, delta_d=32, block=4096; rotate 0s
-  ms/query (scan only): 98.3
+  ms/query (scan only): 130.5
   dims touched/query: 34.34M terms (brute = 128.0M; reduction 3.7x)
   recall@10: 1.0000 (0/100 queries imperfect)
-### gist k=10 eps0=2.1
-gist: 1,000,000 x 960, k=10, eps0=2.1, delta_d=32, block=4096; rotate 5s
- deep10M.npy: 9,999,900 x 96, k=1, eps0=2.1, delta_d=32, block=4096; rotate 2s
+gist: 1,000,000 x 960, k=1, eps0=2.1, delta_d=32, block=4096; rotate 6s
+  ms/query (scan only): 250.1
+  dims touched/query: 44.52M terms (brute = 960.0M; reduction 21.6x)
+  recall@1: 1.0000 (0/100 queries imperfect)
+gist: 1,000,000 x 960, k=10, eps0=2.1, delta_d=32, block=4096; rotate 6s
+  ms/query (scan only): 305.4
+  dims touched/query: 51.93M terms (brute = 960.0M; reduction 18.5x)
+  recall@10: 0.9990 (1/100 queries imperfect)
+dbpedia_openai_1M.npy: 999,900 x 1536, k=1, eps0=2.1, delta_d=32, block=4096; rotate 28s
+  ms/query (scan only): 253.0
+  dims touched/query: 49.79M terms (brute = 1535.8M; reduction 30.8x)
+  recall@1: 1.0000 (0/100 queries imperfect)
+dbpedia_openai_1M.npy: 999,900 x 1536, k=10, eps0=2.1, delta_d=32, block=4096; rotate 18s
+  ms/query (scan only): 283.4
+  dims touched/query: 69.34M terms (brute = 1535.8M; reduction 22.2x)
+  recall@10: 1.0000 (0/100 queries imperfect)
+deep10M.npy: 9,999,900 x 96, k=1, eps0=2.1, delta_d=32, block=4096; rotate 2s
   ms/query (scan only): 862.5
   dims touched/query: 325.82M terms (brute = 960.0M; reduction 2.9x)
+  recall@1: 1.0000 (0/100 queries imperfect)
+deep10M.npy: 9,999,900 x 96, k=10, eps0=2.1, delta_d=32, block=4096; rotate 2s
+  ms/query (scan only): 767.2
+  dims touched/query: 336.76M terms (brute = 960.0M; reduction 2.9x)
+  recall@10: 1.0000 (0/100 queries imperfect)
+== eps0 sweep, sift k=1 ==
+sift: 1,000,000 x 128, k=1, eps0=1.0, delta_d=32, block=4096; rotate 0s
+  ms/query (scan only): 83.7
+  dims touched/query: 32.49M terms (brute = 128.0M; reduction 3.9x)
+  recall@1: 0.9900 (1/100 queries imperfect)
+sift: 1,000,000 x 128, k=1, eps0=4.0, delta_d=32, block=4096; rotate 0s
+  ms/query (scan only): 91.5
+  dims touched/query: 35.93M terms (brute = 128.0M; reduction 3.6x)
   recall@1: 1.0000 (0/100 queries imperfect)
