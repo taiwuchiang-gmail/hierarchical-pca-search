@@ -64,7 +64,7 @@ def main():
 
     # corner inset: raw per-component variance fractions (log-log) --
     # recovered exactly as the difference of the cumulative curve
-    ins = ax.inset_axes([0.56, 0.10, 0.42, 0.40])
+    ins = ax.inset_axes([0.62, 0.10, 0.36, 0.36])
     for name, _, color in DATASETS:
         frac = np.diff(cums[name], prepend=0.0)
         ins.plot(np.arange(1, len(frac) + 1), frac, c=color, lw=1.0)
