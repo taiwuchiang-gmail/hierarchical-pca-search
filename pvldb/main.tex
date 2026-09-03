@@ -212,7 +212,8 @@ choices make the bound an algorithm. First, \emph{which rotation}: any
 orthogonal rotation satisfies Lemma~\ref{lem:pca}; PCA makes the bound
 \emph{tight}, since by the Karhunen--Lo\`eve theorem it packs the maximum
 variance---and hence, on average, the largest share of any pairwise
-distance---into the first $k$ coordinates. Exactness is unconditional;
+distance---into the first $k$ coordinates
+(quantified in Eq.~(\ref{eq:tightness})). Exactness is unconditional;
 quality is not, a separation that recurs throughout this paper. Second,
 \emph{where the radius comes from}: rather than a static threshold, a
 Top-$K$ probe at the coarsest width computes exact distances for the $K$
@@ -376,9 +377,49 @@ replace the trial.}
 \label{fig:funnel}
 \end{figure}
 
-\textbf{Tier 1 --- eigenvalue decay, which now also \emph{picks} the
-widths.} Fit PCA on a sample; the cumulative explained variance at each
-cascade width is the expected tightness of that PCA level. Preliminary
+\textbf{Tier 1 --- eigenvalue decay, which also \emph{picks} the
+widths.} Fit PCA on a sample. The eigenvalue curve is not merely a
+heuristic signal: in the PCA basis the coordinates of the difference
+between two independently drawn points are uncorrelated with variances
+$2\lambda_i$, so for typical candidate pairs
+\begin{equation}
+\label{eq:tightness}
+\frac{\mathbb{E}\,L_2^2\bigl(T_k(X'), T_k(Y')\bigr)}
+     {\mathbb{E}\,L_2^2(X, Y)}
+\;=\;
+\frac{\sum_{i \le k} \lambda_i}{\sum_{i} \lambda_i},
+\end{equation}
+the cumulative explained variance at $k$. The curve therefore reads
+directly as the \emph{expected fractional tightness} of the width-$k$
+bound on the very population the cascade prunes---each dataset's curve is
+its prunability signature (Figure~\ref{fig:eigen}). Two blind spots
+follow from the same statement, and each motivates a later tier.
+Equation~(\ref{eq:tightness}) is an expectation over pairs, while pruning
+is a tail event---a candidate is discarded only when its prefix distance
+clears the radius---so scalar summaries of the curve can mislead: GIST1M
+needs 303 of 960 dimensions for 95\% variance, a ``flat spectrum'' by the
+usual standard, yet its steep \emph{head} (48\% by eight components) is
+what the early levels price, and the measured verdict is \textsc{strong}.
+And the spectrum is second-order only: clustered structure that no
+rotation can expose is invisible to it, which is what tier 2 screens for
+and tier 3 settles.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig_eigen.pdf}
+\caption{Cumulative explained variance on 100k samples (log-scale
+components): each dataset's prunability signature, since by
+Eq.~(\ref{eq:tightness}) the curve is the expected fractional tightness
+of a width-$k$ bound. Dots mark the widths the funnel selects at the
+$\{30,50,70,85\}\%$ targets (dotted lines). SIFT and GIST are
+steep-headed; DBpedia's curve is shifted right---the reason a fixed
+$d{=}128$ ladder misreads it as unprunable; DEEP is flattest, matching
+its \textsc{moderate} verdict, and its last width sits below the 85\%
+line because of the $d/2$ cap.}
+\label{fig:eigen}
+\end{figure}
+
+Preliminary
 versions of this work used a fixed ladder $(8,16,32,64)$---which, we
 discovered, is silently calibrated to $d \approx 128$: on 1536-dimensional
 OpenAI embeddings it stops at 4\% of the dimensions, prunes almost nothing
