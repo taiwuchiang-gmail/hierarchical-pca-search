@@ -58,8 +58,23 @@ def main():
     ax.set_ylabel("cumulative explained variance (%)")
     ax.text(1.15, 87, "85%", fontsize=7, c="gray", va="bottom")
     ax.text(1.15, 31, "30%", fontsize=7, c="gray", va="bottom")
-    ax.legend(loc="lower right", fontsize=8, frameon=False)
+    ax.legend(loc="upper left", fontsize=7.5, frameon=False,
+              borderaxespad=0.2)
     ax.spines[["top", "right"]].set_visible(False)
+
+    # corner inset: raw per-component variance fractions (log-log) --
+    # recovered exactly as the difference of the cumulative curve
+    ins = ax.inset_axes([0.56, 0.10, 0.42, 0.40])
+    for name, _, color in DATASETS:
+        frac = np.diff(cums[name], prepend=0.0)
+        ins.plot(np.arange(1, len(frac) + 1), frac, c=color, lw=1.0)
+    ins.set_xscale("log")
+    ins.set_yscale("log")
+    ins.set_xlim(1, 2048)
+    ins.set_title(r"raw spectra: $\lambda_k / \sum_i \lambda_i$",
+                  fontsize=6.5, pad=2)
+    ins.tick_params(labelsize=5.5, length=2, pad=1)
+    ins.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
     fig.savefig("pvldb/fig_eigen.pdf")
     print("saved pvldb/fig_eigen.pdf")
