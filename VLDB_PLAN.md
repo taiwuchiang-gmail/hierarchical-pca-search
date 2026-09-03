@@ -53,3 +53,14 @@ in September, not November.
 - **Nov 2026**: merge papers into PVLDB template, related-work expansion,
   internal review; abstract due Nov 25.
 - **Dec 1, 2026**: submit (slip to Jan–Mar cycles if experiments demand).
+
+## Status 2026-09-03: CONTENT-COMPLETE, 3 months early
+
+All experiments and the merged draft (`pvldb/main.pdf`, 9 pp of 12) are
+done. **Decision (Tai): skip the remaining optional items** (larger-than-
+RAM OOC run, native C++ ADSampling wall-clock, k-sweep table) — they are
+stated as future work in Limitations, and every one is reproducible from
+a one-command script in this repo if a reader or reviewer wants it.
+Remaining before submission: proofread/internal review, decide the
+submission cycle (rolling monthly; Dec 1 planned, earlier cycles now
+possible), register abstract by the 25th of the prior month.
