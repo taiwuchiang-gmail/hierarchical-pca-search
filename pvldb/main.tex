@@ -6,6 +6,10 @@
 %%% VLDB block end %%%
 
 \usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+\definecolor{pcablue}{HTML}{4C72B0}
+\definecolor{ballorange}{HTML}{DD8452}
 
 \renewcommand\vldbdoi{XX.XX/XXX.XX}
 \renewcommand\vldbpages{XXX-XXX}
@@ -315,7 +319,62 @@ computed.
 \label{sec:funnel}
 
 The funnel answers, from a sample and in seconds, ``which levels should this
-index have for \emph{my} data?''
+index have for \emph{my} data?'' Figure~\ref{fig:funnel} shows its shape:
+two statistical tiers that may only \emph{nominate}, and one measured tier
+that alone \emph{decides}.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\small,
+  box/.style={rectangle, rounded corners=2pt, draw=black!55, align=left,
+              inner sep=5pt, text width=0.88\linewidth},
+  vbox/.style={rectangle, rounded corners=2pt, draw=black!55, align=left,
+              inner sep=5pt, text width=0.395\linewidth},
+  arr/.style={-{Stealth[length=5pt]}, semithick, black!55},
+  lbl/.style={font=\scriptsize\itshape, black!55, midway, right=2pt},
+  node distance=9pt
+]
+\node (sample) [box, fill=black!8] {\textbf{Sample} --- 100k of your
+  vectors, seconds of compute, \emph{before any index is built}.};
+\node (t1) [box, fill=pcablue!8, below=of sample]
+  {\textbf{Tier 1 --- eigenvalue curve.} Rates each PCA level's expected
+  tightness and \emph{picks the cascade widths}: one level at the
+  dimension reaching each cumulative-variance target
+  $\{30,50,70,85\}\%$ (rounded to multiples of 8, capped at $d/2$).};
+\node (t2) [box, fill=ballorange!10, below=of t1]
+  {\textbf{Tier 2 --- beyond-covariance statistics.} Excess kurtosis of
+  PCA components and $\mathrm{sqdep}$ against the $\sqrt{2/n}$ floor:
+  does structure beyond the covariance \emph{exist}? (Existence does not
+  imply it is harvestable.)};
+\node (t3) [box, fill=black!4, below=of t2]
+  {\textbf{Tier 3 --- measured trial.} Fit the \emph{real} index on the
+  sample; run the \emph{real} cascade with the ball level on and off;
+  measure the work ratio and the ball stage's own survivor rate.};
+\node (vp) [vbox, fill=pcablue!14, below=11pt of t3.south west,
+  anchor=north west]
+  {\textbf{PCA levels}\\ \textsc{strong} ($>8\times$ work)\\
+  \textsc{moderate} ($>2\times$)\\ \textsc{poor} $\to$ brute force / ANN};
+\node (vb) [vbox, fill=ballorange!18, below=11pt of t3.south east,
+  anchor=north east]
+  {\textbf{Ball level}\\ \textsc{add} (measured gain)\\
+  \textsc{skip} (bound work cancels savings)\\ \mbox{}};
+\draw[arr] (sample) -- (t1);
+\draw[arr] (t1) -- (t2) node[lbl] {nominates};
+\draw[arr] (t2) -- (t3) node[lbl] {nominates};
+\draw[arr] (t3.south -| vp.north) -- (vp.north);
+\draw[arr] (t3.south -| vb.north) -- (vb.north)
+  node[lbl, right=2pt] {decides};
+\end{tikzpicture}
+\caption{The self-configuration funnel. Tiers 1--2 are statistics: cheap,
+and only allowed to \emph{nominate} (tier 1 also derives the cascade
+widths from the eigenvalue curve). Tier 3 is a measured trial of the real
+cascade and alone \emph{decides}. \S\ref{sec:extrap} shows the sample
+verdicts holding at $10^6$--$10^7$ scale; the tier-2 mispredictions below
+(SIFT and latent-8, in opposite directions) are why no statistic can
+replace the trial.}
+\label{fig:funnel}
+\end{figure}
 
 \textbf{Tier 1 --- eigenvalue decay, which now also \emph{picks} the
 widths.} Fit PCA on a sample; the cumulative explained variance at each
@@ -741,6 +800,7 @@ shows the PCA cascade itself losing to brute force ($0.3\times$)---the
 honest boundary of the entire approach.
 
 \subsection{Extrapolation}
+\label{sec:extrap}
 
 The funnel's trial on a 100k SIFT sample returns $1.0\times$
 (\textsc{skip}); the full-1M parity benchmark measures exactly that (61.1
