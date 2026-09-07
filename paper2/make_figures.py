@@ -2,7 +2,7 @@
 
 Fig 1  fig_bounds.pdf   the two bound geometries (schematic)
 Fig 2  fig_cascade.pdf  SIFT1M survivor cascade, log scale (parity data)
-Fig 3  fig_law.pdf      ball-value law: gain vs ball-stage survivor rate
+Fig 3  fig_law.pdf      ball-value law: gain vs ball-level survivor rate
 
 Colors: PCA/control #4C72B0, ball/hybrid #DD8452 (CVD-validated pair),
 neutral gray for references. All data from the parity-corrected runs.
@@ -135,7 +135,7 @@ for (px, py, lab), off in zip(pts, offs):
     ax.annotate(lab, (px, py), textcoords="offset points", xytext=off,
                 fontsize=6.5, color=INK)
 ax.set_xscale("log")
-ax.set_xlabel("ball-stage survivors (%)")
+ax.set_xlabel("ball-level survivors (%)")
 ax.set_ylabel("ball-level gain over PCA-only")
 ax.set_xlim(0.15, 220)
 style(ax)

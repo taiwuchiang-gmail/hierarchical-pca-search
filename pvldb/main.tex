@@ -294,6 +294,13 @@ exact and PCA makes it tight. Here, any centers are exact and $k$-means
 makes them tight. The maximum of lower bounds is a lower bound, so the
 two families compose freely in one cascade.
 
+A note on terminology. Throughout this paper, each pruning step of the
+cascade is called a \emph{level}. The \emph{ball level} applies the ball
+bound (\ref{eq:ball}) to all points. Each \emph{PCA level} applies the
+prefix bound of Lemma~\ref{lem:pca} at one width. A query passes through
+the levels in order, so we speak of a level's \emph{survivors}: the
+candidates that its bound could not discard.
+
 \subsection{Complementarity}
 
 \begin{figure}[t]
@@ -357,7 +364,7 @@ that alone \emph{decides}.
 \node (t3) [box, fill=black!4, below=of t2]
   {\textbf{Tier 3 --- measured trial.} Fit the \emph{real} index on the
   sample; run the \emph{real} cascade with the ball level on and off;
-  measure the work ratio and the ball stage's own survivor rate.};
+  measure the work ratio and the ball level's own survivor rate.};
 \node (vp) [vbox, fill=pcablue!14, below=11pt of t3.south west,
   anchor=north west]
   {\textbf{PCA levels}\\ \textsc{strong} ($>8\times$ work)\\
@@ -432,7 +439,7 @@ Preliminary
 versions of this work used a fixed ladder $(8,16,32,64)$. We discovered
 that this ladder is silently calibrated to $d \approx 128$. On
 1536-dimensional OpenAI embeddings, it stops at 4\% of the dimensions and
-prunes almost nothing: 68\% of candidates survive the 64-D stage. As a
+prunes almost nothing: 68\% of candidates survive the 64-D level. As a
 result, the funnel misreads clearly prunable data as hopeless. The fix
 makes tier 1 constructive. We place one level at the dimension reaching
 each cumulative-variance target $\{30, 50, 70, 85\}\%$, rounded up to a
@@ -463,7 +470,7 @@ They do not tell whether it is \emph{harvestable}.
 
 \textbf{Tier 3 --- the measured trial.} Tier 3 fits the real hybrid index
 on the sample and runs the real cascade twice, with the ball level on and
-off. It reports the measured ratio and the ball stage's own pruning rate.
+off. It reports the measured ratio and the ball level's own pruning rate.
 The verdict is \textsc{add} or \textsc{skip}.
 
 Tier 3 must be the decider. The evidence is that the statistics
@@ -475,11 +482,13 @@ work cancels the savings. On a latent-dimension-8 Gaussian, tier 2 is
 clean: kurtosis is near 0 and $\mathrm{sqdep}$ sits at the floor. Yet the
 trial says \textsc{add} ($1.9\times$), because low intrinsic dimension
 spreads $d_p$ widely and the bounds prune to 23\% with zero
-multimodality. Across all datasets, the measured value of the ball level
-is a monotone function of its own pruning rate (Figure~\ref{fig:law}):
-survivors of 3\% give $4$--$14\times$; 15--23\% give $2$--$3\times$;
-50--59\% give parity; and 100\% gives $0.8\times$, a measured loss. The
-trial measures exactly this quantity. No statistic substitutes for it.
+multimodality. We call the ball level's measured value its \emph{gain}:
+the wall-clock ratio of the cascade with the ball level to the cascade
+without it. Across all datasets, this gain is a monotone function of the
+ball level's own survivor rate (Figure~\ref{fig:law}). Survivors of 3\%
+give a gain of $4$--$14\times$; 15--23\% give $2$--$3\times$; 50--59\%
+give parity; and 100\% gives $0.8\times$, a measured loss. The trial
+measures exactly this quantity. No statistic substitutes for it.
 
 \begin{figure}[t]
 \centering
@@ -498,7 +507,7 @@ the dashed line.}
 
 \subsection{Offline}
 
-The offline stage has three steps. First, fit PCA; the covariance is
+The offline build has three steps. First, fit PCA; the covariance is
 accumulated in chunks, so no full \texttt{float64} copy of the dataset is
 ever materialized. Second, select the cascade widths from the eigen curve
 (\S\ref{sec:funnel}). Third, fit $k$-means with
@@ -507,7 +516,7 @@ for $k{=}1024$). For each point we store a cluster id (\texttt{int32})
 and $d_p$ (\texttt{float32}), 8 bytes in total, plus the $k \times d$
 centroids and the per-cluster radii. The choice of $k$ is measured, not
 tuned. A sweep over $k \in \{8, 64, 256, 1024, 4096\}$ on SIFT1M shows
-ball-stage survivors falling monotonically from 81\% to 43\%, while fit
+ball-level survivors falling monotonically from 81\% to 43\%, while fit
 cost rises from 4\,s to 47\,s. $\sqrt{N}$ sits at the knee of this
 gain-versus-cost curve, so it is the default.
 
@@ -523,11 +532,11 @@ gain-versus-cost curve, so it is the default.
   projections).
 \item Ball pruning: retain points with $\mathrm{bound}^2 < r^2$.
 \item PCA cascade $(8,16,32,64)$ on the survivors, with a \textbf{re-probe}
-  at the first PCA stage: before pruning, exact distances to the 50 best
+  at the first PCA level: before pruning, exact distances to the 50 best
   8-dimensional candidates tighten $r$. Without this step the ball-seeded
   radius is loose and the cascade degrades (8-D survivors 27.2\% versus
   14.6\% with it); with it, the cascade matches PCA-only tightness
-  stage-for-stage.
+  level-for-level.
 \item Full-distance check on the final survivors. The result is provably
   identical to brute force, and is additionally verified against the
   official ground truth in every experiment.
@@ -570,7 +579,7 @@ The first keeps the original order, so each fetch is one small aligned
 read. The second is \emph{cluster-major}: each $k$-means cluster is a
 contiguous, page-aligned block (under 0.4\% padding), written
 sequentially into \texttt{fallocate}-preallocated extents. The entire
-cascade (probe, re-probe, and all pruning stages) runs on the resident
+cascade (probe, re-probe, and all pruning levels) runs on the resident
 tier. The disk is touched only by the fetch set: probe, re-probe, and
 finalists. Section~\ref{sec:ooc} measures exactly which points that is.
 
@@ -629,7 +638,7 @@ every query.}
 \small
 \begin{tabular}{@{}lrrl@{}}
 \toprule
-Method & ms/query & Speedup & Survivors per stage (\%) \\
+Method & ms/query & Speedup & Survivors per level (\%) \\
 \midrule
 brute (NumPy) & 167.3 & 1.0$\times$ & --- \\
 PCA-only & 61.1 & 2.7$\times$ & 14.7 / 5.2 / 0.8 / 0.06 \\
@@ -644,10 +653,10 @@ FAISS-flat, batch-100 & 5.9 & 28$\times$ & (scans 100\%) \\
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.92\linewidth]{fig_cascade.pdf}
-\caption{Candidates remaining after each stage on SIFT1M (log scale,
+\caption{Candidates remaining after each level on SIFT1M (log scale,
 average over 100 official queries). The cascade discards four orders of
 magnitude before any full-distance evaluation; the hybrid enters the PCA
-stages with half the population and finishes equally tight. This profile is
+levels with half the population and finishes equally tight. This profile is
 the algorithmic fingerprint: it was invariant under every change of numeric
 type, machine load, and implementation tuning in this paper.}
 \label{fig:cascade}
@@ -824,7 +833,7 @@ with deliberate honesty. The method wins up to $k \approx 10$, and it
 \emph{loses} the in-RAM wall-clock at $k = 100$ on every dataset. The
 mechanism is structural, not incidental. The pruning radius is the $k$-th
 best distance, which grows with $k$, and the survivor counts grow with
-it. At $k{=}100$ the ball stage passes 99--100\% of the points, and the
+it. At $k{=}100$ the ball level passes 99--100\% of the points, and the
 cascade approaches a scan with extra overhead. However, the $k{=}100$
 work reductions ($1.2$--$1.6\times$ on the million-scale sets) still
 translate into fewer bytes fetched out of core. That is where large-$k$
@@ -836,7 +845,7 @@ exact queries should run (\S\ref{sec:ooc}).
 \begin{table}[t]
 \caption{Structure regimes (synthetic, $n=200$k, $d=64$ for the first two;
 $n=60$k, $d=128$ for the funnel rows), implementation parity. ``Ball
-survivors'' is the ball stage's own pruning rate---the quantity the funnel's
+survivors'' is the ball level's own pruning rate---the quantity the funnel's
 trial measures.}
 \label{tab:regimes}
 \small
@@ -877,7 +886,7 @@ measured $13.1\times$ and $20.8\times$ respectively, so the sample is
 conservative. DEEP10M sampled \textsc{moderate} at $3.6\times$ and
 measured $3.9\times$ at $10^7$ points. The ball level's sample
 \textsc{skip} was confirmed at full scale on all four datasets. On GIST,
-for example, 92\% of points survive the ball stage, the term counts are
+for example, 92\% of points survive the ball level, the term counts are
 identical, and the wall-clock is strictly worse. In short, the diagnostic
 predicts full-scale outcomes from a sample. This includes the negative
 verdicts, which is its most valuable behavior: it prevents building a
