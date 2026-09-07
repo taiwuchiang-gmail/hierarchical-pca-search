@@ -9,6 +9,12 @@ v2 published 2026-09-02 as 10.5281/zenodo.22258679) stay up as
 preprints — PVLDB review is single-blind, preprints are fine and will
 be disclosed.
 
+**Merged manuscript preprint (2026-09-03):** the full merged paper
+(`pvldb/main.pdf`) is published on Zenodo as a new standalone record —
+version DOI 10.5281/zenodo.22651065, concept DOI
+10.5281/zenodo.22651064 — citing both earlier preprints as
+isDerivedFrom. This is the artifact to submit to PVLDB Vol. 20.
+
 ## Logistics
 
 - Rolling deadlines: 1st of each month 17:00 PT, **mandatory abstract by
