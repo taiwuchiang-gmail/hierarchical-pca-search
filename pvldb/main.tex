@@ -727,11 +727,14 @@ $10^6 \times 128$). Flat scans must hold every vector resident
 (512\,B/vector). The cascades keep only pruning metadata resident and
 page full vectors from storage (\S\ref{sec:layout}): the 8-dimensional
 sketch costs 32\,B/vector, and the ball metadata costs 8\,B/vector.
-Parentheses give the RAM saving relative to a flat scan. The last row
-situates disk-resident ANN systems. Their residency (taken from their own
-reports, not measured here) is comparable to the cascades', but they
-answer the approximate problem. This work occupies the
-exact-at-cascade-residency quadrant.}
+Parentheses give the RAM saving relative to a flat scan. The hybrid's
+work is written as distance terms plus ball bound-ops (as in
+Table~\ref{tab:ops}); the two are kept separate because a bound-op is
+cheaper than a term, so they are not summed. The last row situates
+disk-resident ANN systems. Their residency (taken from their own reports,
+not measured here) is comparable to the cascades', but they answer the
+approximate problem. This work occupies the exact-at-cascade-residency
+quadrant.}
 \label{tab:resources}
 \small
 \setlength{\tabcolsep}{4pt}
