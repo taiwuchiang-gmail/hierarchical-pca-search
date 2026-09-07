@@ -53,7 +53,8 @@ def main():
     ax.set_ylabel("work per query\n(% of brute-force scan)", fontsize=8)
     ax.set_ylim(0, 15)
     ax.tick_params(labelsize=7)
-    ax.legend(fontsize=6.5, frameon=False, loc="upper center")
+    ax.legend(fontsize=6.5, frameon=False, loc="upper left",
+              borderaxespad=0.3)
     ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
     fig.savefig("pvldb/fig_work.pdf")
