@@ -867,12 +867,33 @@ includes the negative results. The flat-spectrum clustered dataset is
 PCA's blind spot. There, the ball level prunes to 3\% before any
 projection is computed, and the hybrid reaches $13.9\times$. Its bound
 requires no multiplications, so it undercuts even the 8-dimensional scan.
+Figure~\ref{fig:work} makes the contrast with SIFT concrete in the work
+currency. On SIFT the two cascades do almost the same work (9.8\% vs
+7.6\% of a scan), which is the tie. On the clustered data the hybrid does
+far less work (2.2\% vs 12.8\%), and most of its small cost is the ball
+bound-ops, not distance terms. This is what a survivor-count plot cannot
+show: both cascades reach the same survivors, but the hybrid reaches them
+with much less work.
 On the latent-48 blob, the ball level is measured to \emph{hurt}
 ($0.8\times$): 100\% of points survive, so the level is pure overhead. On
 i.i.d.\ noise, the diagnostic correctly reports that nothing works and
 that brute force or ANN should be used. The i.i.d.\ row also shows the
 PCA cascade itself losing to brute force ($0.3\times$). That is the
 honest boundary of the entire approach.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.82\linewidth]{fig_work.pdf}
+\caption{Per-query work of the two cascades, as a percentage of a
+brute-force scan, on a tie dataset (SIFT1M) and an add dataset (512
+clusters). Bars are terms; the hatched segment is the ball level's
+bound-ops, charged separately. On SIFT the bars are nearly equal, which
+is the wall-clock tie. On the clustered data the hybrid does far less
+work. Both cascades return the same exact result and reach the same
+survivors (Table~\ref{tab:regimes}); only the work differs, which a
+survivor-count plot cannot display.}
+\label{fig:work}
+\end{figure}
 
 \subsection{Extrapolation}
 \label{sec:extrap}
