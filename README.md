@@ -1,22 +1,50 @@
-# Hierarchical PCA Pruning for Exact Nearest Neighbor Search
+# Exact Nearest-Neighbor Search with Composable Lower Bounds
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21387358.svg)](https://doi.org/10.5281/zenodo.21387358)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22651064.svg)](https://doi.org/10.5281/zenodo.22651064)
 [![CI](https://github.com/taiwuchiang-gmail/hierarchical-pca-search/actions/workflows/ci.yml/badge.svg)](https://github.com/taiwuchiang-gmail/hierarchical-pca-search/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This repository contains the official implementation for the paper:  
-**"A Hierarchical Pruning Algorithm for Fast, Exact Nearest Neighbor Search in High-Dimensional Spaces"** (VLDB '26 / Zenodo 2026).
+Exact nearest-neighbor search that is self-configuring, and that works both in
+RAM and out of core. Some applications cannot accept a missed true neighbor
+(deduplication, medical and legal retrieval, scientific analysis). For them,
+the standard tool is a cheap **lower bound** on each candidate's distance: if
+the bound already exceeds the best distance found so far, the candidate is
+discarded without computing its full distance.
 
-## Overview
+This repository composes two complementary families of exact bounds into one
+cascade:
 
-Finding the exact nearest neighbor in high-dimensional space is bottlenecked by the "Curse of Dimensionality," particularly the I/O costs of loading full vectors (e.g., 128-D) from disk. 
+* a **PCA-truncation** bound (tight when variance concentrates in a few
+  dimensions — linearly correlated data), and
+* a **triangle-inequality ball** bound around k-means centroids (tight for
+  clustered data, and exact for *any* centers, so clustering quality affects
+  only speed, never correctness).
 
-This repository implements a **Dynamic Top-K Branch and Bound algorithm** using PCA and the L2 Euclidean norm. By evaluating candidates in progressively higher dimensions (8D $\rightarrow$ 16D $\rightarrow$ 32D $\rightarrow$ 64D), the algorithm mathematically guarantees 100% exactness while safely pruning **over 99.9% of the candidate space** before performing a full-dimensional distance calculation.
+Because neither bound helps on all data, the index **configures itself from a
+sample**: it picks the cascade widths from the eigenvalue curve, then a
+three-tier diagnostic ("statistics nominate, measurement decides") rules on
+each level. Exactness is verified on every query of every experiment.
 
-### Results on SIFT1M
-* **10.2x algorithmic work reduction:** 12.6M per-dimension distance terms per query vs the 128.0M of any exhaustive scan (hardware-independent count; see Paper II for the accounting).
-* **4.3x reduction** in query latency vs a vectorized NumPy brute-force baseline (float64 regime; ~2.7x in float32 — see Paper II for why wall-clock constants differ from work counts).
-* **Reduces disk I/O exponentially:** Out of 1,000,000 vectors, an average of only 564 vectors require full 128-D evaluation, and only 8–40 bytes/vector of metadata must stay resident (vs 512 B/vector for raw vectors).
+### At a glance
+* **3.9–20.8× less work** than a brute-force scan for exact 1-NN across four
+  real datasets (96–1536 dimensions), with the wall-clock gain *growing* with
+  dimensionality (2.6× at 128-D → 6.2× at 960-D).
+* **Out of core:** exact cold-read queries run **7–17× faster** than a full
+  disk scan and read **40–730× fewer bytes**, because the fetch set
+  concentrates in a few k-means clusters.
+* **ANN-class RAM residency, exactly:** only 8–40 bytes/vector of metadata
+  stay resident (vs 512 B/vector for raw fp32), a 13–64× reduction.
+
+### Papers
+* **Merged manuscript** (primary, PVLDB Vol. 20 format) —
+  [`pvldb/main.pdf`](pvldb/), Zenodo
+  [10.5281/zenodo.22651064](https://doi.org/10.5281/zenodo.22651064). This is
+  the current, complete write-up.
+* Preliminary reports it supersedes: Paper I (hierarchical PCA pruning,
+  [`paper1/`](paper1/),
+  [10.5281/zenodo.21387358](https://doi.org/10.5281/zenodo.21387358)) and
+  Paper II (composable bounds + self-configuring funnel, [`paper2/`](paper2/),
+  [10.5281/zenodo.22199955](https://doi.org/10.5281/zenodo.22199955)).
 
 ## Installation
 
@@ -33,7 +61,9 @@ Installation also provides the `pca-diagnose` command-line tool.
 
 ## Quick Start (Benchmarking)
 
-To run the SIFT1M benchmark and reproduce the results from the paper:
+To run the SIFT1M benchmark and reproduce the PCA-only cascade (the simplest
+entry point; see the tables above and `knn_bench.py` / `ooc_bench.py` for the
+full hybrid, k-NN, and out-of-core results):
 
 ```bash
 python benchmark.py
@@ -114,11 +144,12 @@ This bound needs **no distance computations at query time** — one gather and
 one subtraction per point, after `k << N` centroid distances. It is exact for
 *any* centers (quality only affects speed, never correctness), and it is tight
 exactly where the PCA bound is loose: clustered / multimodal data. The hybrid
-query runs the ball stage first, then the PCA cascade on the survivors.
+query runs the ball level first, then the PCA cascade on the survivors.
 
 ```bash
-python hybrid_search.py demo    # PCA-hostile vs PCA-friendly showcase
-python hybrid_search.py sift    # SIFT1M, official queries
+python hybrid_search.py demo             # PCA-hostile vs PCA-friendly showcase
+python hybrid_search.py sift             # SIFT1M, official queries
+python knn_bench.py gist auto            # k in {1,10,100}, eigen-curve levels
 ```
 
 Exact **k-NN** is supported: `idx.query(q, k=10)` returns the k nearest
@@ -126,35 +157,80 @@ neighbors (sorted, verified exact against brute force in the test suite).
 The dynamic pruning radius generalizes from the best evaluated distance to
 the k-th best over distinct evaluated points.
 
-Measured on SIFT1M (100 official queries, float32, exactness verified per
-query — Paper II, Table 2):
+### Results on four real datasets
 
-| method | ms/query | speedup | cascade survivors |
-|---|---|---|---|
-| brute force (NumPy) | 167.3 | 1.0x | — |
-| PCA-only (Paper I) | 61.1 | 2.7x | 14.7% / 5.2% / 0.8% / 0.06% |
-| hybrid (ball + PCA) | 62.2 | 2.7x | ball 50.6% -> 14.6% / 5.1% / 0.7% / 0.05% |
+Exact 1-NN, eigen-curve-selected levels, PCA-only cascade. Work is counted in
+per-dimension distance terms; a brute-force scan is `n·d` terms by definition,
+so the "work reduction" column is hardware-independent. Every query is exact.
 
-On SIFT the ball level is a wall-clock **tie**: it prunes only ~50% before
-the PCA cascade, and the bound evaluations cost what they save — which is
-exactly what the diagnostic's measured trial predicts (`SKIP`) from a 100k
-sample. Where the data *is* clustered the same level dominates: on "many
-tight clusters" data (flat eigen-spectrum) the hybrid reaches **13.9x** vs
-2.1x for PCA-only, and on latent-dim-8 Gaussian data 5.6x vs 2.1x. The
-ball level's value is monotone in its survivor rate (3% -> 4–14x,
-15–23% -> 2–3x, ~50% -> tie, 100% -> slower); see Paper II (`paper2/`) for
-the full measurements and the hardware-independent work accounting.
+| dataset | n × d | wall-clock | work reduction | funnel verdict |
+|---|---|---|---|---|
+| SIFT1M | 1M × 128 | 2.6× | 10.2× | STRONG |
+| GIST1M | 1M × 960 | **6.2×** | **20.8×** | STRONG |
+| DBpedia-OpenAI (ada-002) | 1M × 1536 | 6.0× | 12.8× | STRONG |
+| DEEP10M | 10M × 96 | 1.2× | 3.9× | MODERATE |
 
-`diagnose.py` decides whether the ball level is worth adding for *your* data
-with a three-tier funnel: (1) the eigen curve rates the PCA levels, (2)
-kurt(PCA)/sqdep statistics detect structure beyond the covariance, and (3) a
-measured trial of the real hybrid cascade on your sample delivers the verdict
-(`ADD` / `SKIP`), because the statistics nominate but the measurement decides.
+The wall-clock gain *grows with dimensionality*: brute force pays the full
+dimension per point, while the cascade pays only for the data's intrinsic
+structure. k-NN wins up to k≈10 and honestly loses in RAM at k=100 (the
+pruning radius grows with k). The 1536-D OpenAI embeddings only prune once
+the cascade widths follow the eigen curve; with a fixed `(8,16,32,64)` ladder
+the same data reads as unprunable.
+
+### Out of core: exact search cheaper than a disk scan
+
+`ooc_bench.py` builds a two-tier on-disk layout (a resident sketch + metadata,
+plus a cluster-major data file) and measures exact cold-read queries under
+`O_DIRECT` against a full disk scan. Because a query's nearest neighbors are
+near each other, its fetch set concentrates in a few k-means clusters (27 of
+1024 on the OpenAI embeddings), so the layout turns the final fetch into a few
+large reads:
+
+| dataset | scan | point-fetch | block-fetch | fewer bytes |
+|---|---|---|---|---|
+| DBpedia-OpenAI | 5385 ms | **318 ms (17×)** | 418 ms (13×) | 730× |
+| GIST1M | 3006 ms | 421 ms (7×) | 751 ms (4×) | 40× |
+| SIFT1M | 402 ms | 61 ms (7×) | 81 ms (5×) | 212× |
+
+```bash
+python ooc_bench.py build dbpedia_openai_1M.npy   # write the two-tier layout
+python ooc_bench.py run   dbpedia_openai_1M.npy    # timed 3-arm cold-read bench
+python locality_stats.py  gist auto                # how cluster-local is the fetch set?
+```
+
+The k-means structure earns its place as a **partitioner** for the on-disk
+layout even on datasets where the funnel rejects it as a *pruning level*.
+
+### The self-configuration funnel
+
+`diagnose.py` decides, from a sample of *your* vectors and in seconds, which
+levels this index should have — including the cascade widths, picked from the
+eigenvalue curve. A three-tier funnel: (1) the eigen curve rates the PCA
+levels and picks the widths, (2) kurt(PCA)/sqdep statistics detect structure
+beyond the covariance, and (3) a measured trial of the real hybrid cascade on
+your sample delivers the verdict (`ADD` / `SKIP`) — because the statistics
+nominate but the measurement decides. On SIFT the ball level's verdict is a
+`SKIP` (it prunes only ~50%, and the bound work cancels the saving — a
+wall-clock tie), while on clustered data with a flat eigen-spectrum the same
+level dominates (hybrid **13.9×** vs 2.1× for PCA-only).
+
+A statistical baseline, ADSampling (SIGMOD 2023), is measured in the same work
+currency in [`adsampling_bench.py`](adsampling_bench.py): in RAM the two are
+mixed, but ADSampling must touch every vector (its Δd=32 floor), so it cannot
+leave RAM — where our deterministic bounds fetch only 0.06–1% of the vectors.
 
 ## Understanding the Code
 
-The core of the logic is inside `hierarchical_pca_1nn_l2` in `benchmark.py`. 
-It utilizes a **Top-50 Probe**: at the lowest dimensional representation (8D), it identifies the 50 closest candidates and immediately computes their full 128D distance. The absolute minimum of these 50 becomes a mathematically guaranteed, tight upper-bound radius for pruning the remaining 999,950 vectors.
+`hybrid_search.py` holds the main composed index (`HybridIndex`): the ball
+level, the PCA cascade, the re-probe, exact k-NN, and the `count_ops` work
+accounting. `benchmark.py` is the simpler PCA-only reference implementation
+from Paper I; its core is `hierarchical_pca_1nn_l2`.
+
+Both use a **Top-50 Probe**: at the coarsest representation (8D), the 50
+closest candidates get their full distance computed immediately. The minimum
+of those 50 is a mathematically guaranteed, tight radius for pruning the rest
+— safe from the first comparison on, with no prior knowledge of the neighbor
+distance.
 
 ## Tests
 
@@ -180,22 +256,23 @@ quality may affect speed, never correctness.
 
 ## Citation
 
-If you use this code in your research, please cite (the concept DOI always
-resolves to the latest version):
+If you use this code in your research, please cite the merged manuscript (the
+concept DOI always resolves to the latest version):
 
 ```bibtex
-@misc{chiang2026hierarchical,
-  title={A Hierarchical Pruning Algorithm for Fast, Exact Nearest Neighbor Search in High-Dimensional Spaces},
+@misc{chiang2026composable,
+  title={Exact Nearest-Neighbor Search with Composable Lower Bounds:
+         Self-Configuring Hierarchical Pruning, In RAM and Out of Core},
   author={Chiang, Tai-Wu},
   publisher={Zenodo},
   year={2026},
-  doi={10.5281/zenodo.21387358},
-  url={https://doi.org/10.5281/zenodo.21387358}
+  doi={10.5281/zenodo.22651064},
+  url={https://doi.org/10.5281/zenodo.22651064}
 }
 ```
 
-The hybrid-bound sequel ("Composable Exact Bounds", Paper II) lives in
-[`paper2/`](paper2/).
+The earlier preliminary reports have their own DOIs: Paper I
+(10.5281/zenodo.21387358) and Paper II (10.5281/zenodo.22199955).
 
 ## License
 [MIT](LICENSE)
