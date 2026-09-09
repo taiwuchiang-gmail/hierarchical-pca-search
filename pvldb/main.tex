@@ -15,6 +15,15 @@
 \renewcommand\vldbpages{XXX-XXX}
 \renewcommand\vldbavailabilityurl{https://github.com/taiwuchiang-gmail/hierarchical-pca-search}
 
+% Reduce overfull lines: allow a little extra interword stretch as a last
+% resort, and give TeX break points inside the long compounds this paper
+% uses often (TeX will not hyphenate a word that already contains a hyphen).
+\setlength{\emergencystretch}{3em}
+\hyphenation{hard-ware in-de-pen-dent di-men-sion-al-i-ty di-men-sional
+  con-fig-u-ra-tion self-con-fig-ur-ing in-sen-si-tive rep-e-ti-tions
+  ap-prox-i-mate eco-nom-ics vantage-point res-i-dent dimen-sion-major
+  full-dis-tance cu-mu-la-tive in-struc-tion multi-data-set}
+
 \begin{document}
 
 \title{Exact Nearest-Neighbor Search with Composable Lower Bounds:
@@ -200,7 +209,7 @@ Let $T_k$ retain the first $k$ coordinates.
 \begin{lemma}
 \label{lem:pca}
 For any truncation width $k < d$,
-$L_2^2\!\bigl(T_k(X'), T_k(Y')\bigr) \le L_2^2(X, Y)$.
+\[ L_2^2\bigl(T_k(X'), T_k(Y')\bigr) \le L_2^2(X, Y). \]
 \end{lemma}
 
 \begin{proof}
@@ -250,6 +259,7 @@ first two rungs; the others are available under the same principle.
 different data structure; each mirrors a quantizer family.}
 \label{tab:shapes}
 \small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{@{}llll@{}}
 \toprule
 Shape & Bound cost & Tight for & Quantizer twin \\
@@ -259,7 +269,7 @@ ellipsoid & per-axis scaled & stretched clusters & OPQ \\
 slab & projection residual & local low rank & local PCA \\
 cone$\times$annulus & closed form & radial/gain data & gain--shape \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 \subsection{The Ball Bound}
@@ -636,6 +646,7 @@ implementation parity. All methods return the ground-truth neighbor on
 every query.}
 \label{tab:sift}
 \small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{@{}lrrl@{}}
 \toprule
 Method & ms/query & Speedup & Survivors per level (\%) \\
@@ -647,7 +658,7 @@ hybrid & 62.2 & 2.7$\times$ & ball 50.6 $\to$ 14.6 / 5.1 / 0.7 / 0.05 \\
 FAISS-flat, 1 thread & 29.3 & 5.7$\times$ & (scans 100\%) \\
 FAISS-flat, batch-100 & 5.9 & 28$\times$ & (scans 100\%) \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 \begin{figure}[t]
@@ -737,7 +748,7 @@ approximate problem. This work occupies the exact-at-cascade-residency
 quadrant.}
 \label{tab:resources}
 \small
-\setlength{\tabcolsep}{3pt}
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{@{}lcrrr@{}}
 \toprule
 Method & Exact & ms/query & Terms (M) & Resident RAM \\
@@ -750,7 +761,7 @@ hybrid & yes & 62.2 & 8.7\,{\small$+1.0$} & 8--40\,MB \,(13--64$\times$) \\
 \midrule
 IVF / disk ANN~\cite{faiss,diskann,spann} & no & --- & --- & $\sim$8--64\,MB \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 \textbf{Why wall-clock is the wrong headline (measured).} Two confounds
