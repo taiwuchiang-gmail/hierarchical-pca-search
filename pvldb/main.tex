@@ -66,19 +66,24 @@ results in hardware-independent work units alongside wall-clock time,
 because wall-clock proved regime-dependent while work counts never moved.
 On four real datasets spanning 96 to 1536 dimensions (SIFT1M, GIST1M,
 DBpedia-OpenAI-1M, and DEEP10M), exact 1-NN search performs
-$3.9$--$20.8\times$ less work than a full scan. The wall-clock gain grows
-with dimensionality, from $2.6\times$ at 128 dimensions to $6.2\times$ at
-960. Exact $k$-NN generalizes the pruning radius to the $k$-th order
-statistic; it wins up to $k\approx10$ and loses in RAM at $k=100$. Out of
-core, the fetch set concentrates in few $k$-means clusters (27 of 1024 on
-the embeddings). A measured two-tier layout with \texttt{O\_DIRECT} cold
-reads answers exact queries $7$--$17\times$ faster than a full disk scan
-and reads $40$--$730\times$ fewer bytes. We also compare against
-ADSampling, the state-of-the-art statistical pruner. In RAM the work
-counts are mixed. Out of core, however, ADSampling must touch every
-vector because of its 32-dimension floor, while our cascade fetches only
-0.06--1\% of the vectors. Exactness is verified on every query of every
-experiment. All code, diagnostics, and experiments are public.
+$3.9$--$20.8\times$ less work than a full scan. Against a NumPy
+brute-force scan, the in-RAM wall-clock gain is $1.2\times$ at 96
+dimensions, $2.6\times$ at 128, and about $6\times$ at 960 and 1536; a
+single-thread FAISS scan still wins in RAM at 128 dimensions. Exact $k$-NN
+generalizes the pruning radius to the $k$-th order statistic; at $k=10$ it
+wins on three of the four datasets, and the PCA-only cascade loses in RAM
+at $k=100$. Out of core, the fetch set concentrates in few $k$-means
+clusters (27 of 1024 on average on the embeddings). A measured two-tier
+layout with \texttt{O\_DIRECT} cold reads answers exact queries
+$2$--$17\times$ faster than our full disk scan, or $1.1$--$8.8\times$
+faster than the device's sequential-bandwidth limit for any scan, and reads
+$18$--$730\times$ fewer bytes. We also compare against ADSampling, the
+state-of-the-art statistical pruner. In RAM the work counts are mixed.
+ADSampling pays a 32-dimension floor on every vector, while our cascade
+fetches only 0.06--1.2\% of the vectors; an equal-residency out-of-core
+comparison remains future work. Exactness is verified on every query of
+every in-RAM experiment. All code, diagnostics, and experiments are
+public.
 \end{abstract}
 
 \maketitle
@@ -107,18 +112,19 @@ them. The $k$-NN generalization, the eigen-curve width selection, three of
 the four datasets, the measured out-of-core results, and the ADSampling
 baseline are new.}
 
-That bound has a structural blind spot. PCA truncation is tight exactly
+That bound sees only linear structure. PCA truncation is tight on average
 when variance concentrates in a few principal directions, which means
 linearly correlated data. Clustered data can behave very differently. Its
-eigenvalue spectrum can be flat, which collapses the PCA cascade toward
-brute force. Yet the same data is highly compressible in another sense:
-points huddle near a modest number of centroids. No single bound family
-serves all data. Worse, a practitioner has no way to know, before building
+eigenvalue spectrum can be flat, so the eigen curve predicts a loose
+bound. Yet the same data is highly compressible in another sense: points
+huddle near a modest number of centroids, and a bound built on those
+centroids costs one subtraction per point rather than a multiply-add per
+coordinate. No single bound family serves all data. Worse, a practitioner has no way to know, before building
 an index, which family (if any) their data supports.
 
 This paper makes two moves. First, \textbf{exact bounds compose}. The
 maximum of valid lower bounds is itself a valid lower bound, so bound
-families with complementary blind spots can share one cascade. We add a
+families with different blind spots can share one cascade. We add a
 triangle-inequality \emph{ball bound} around $k$-means centroids. It is
 the clustered-data complement of PCA truncation, and it is exact for
 \emph{any} choice of centers: clustering quality affects only pruning
@@ -133,23 +139,26 @@ question with a measured trial of the real cascade, and emits an
 There is also an economic motivation. An exhaustive flat scan requires the
 entire dataset to be resident in RAM, which is the most expensive byte in
 the machine. RAM costs roughly an order of magnitude more than NVMe per
-byte. The pruning cascade needs only its metadata resident: 8--40 bytes
-per vector, versus 512 bytes per vector for \texttt{fp32} data. At one
-billion vectors, this is 8--40\,GB of RAM versus 512\,GB. That is a
-commodity machine versus a specialty one, with exactness preserved.
+byte. The pruning cascade needs only its sketch resident: the first
+$\max(\mathrm{levels})$ rotated coordinates plus 16 bytes of per-point
+metadata. On our four datasets this is $1.8$--$7.7\times$ less RAM than
+the data (for example, 272 versus 512 bytes per vector on SIFT1M, and 496
+versus 3{,}840 on GIST1M), with exactness preserved. Quantizing the sketch
+with conservative cell bounds, as the VA-file does~\cite{vafile}, would
+shrink it further; we leave that to future work.
 
 Our contributions:
 \begin{enumerate}
 \item \textbf{Exact hierarchical pruning from composable bounds.} A
   PCA-prefix cascade with a dynamic Top-$K$ pruning radius, unified with
   the triangle-inequality ball bound under one containing-region
-  principle. Each bound family covers the other's structural blind spot
-  (\S\ref{sec:theory}).
+  principle. The two families exploit different structure: linear
+  correlation and clustering (\S\ref{sec:theory}).
 \item \textbf{A composed exact cascade, generalized to $k$-NN.} The
   cascade combines a ball level and the PCA levels, with a radius
   re-probe. Exact $k$-NN uses the $k$-th order statistic over evaluated
-  points as the pruning radius. Storage overhead is about 8 bytes per
-  point (\S\ref{sec:algorithm}).
+  points as the pruning radius. In RAM, the storage overhead is about 8
+  bytes per point (\S\ref{sec:algorithm}).
 \item \textbf{Self-configuration that includes the cascade widths.}
   Widths are placed at fixed cumulative-variance targets on the
   eigenvalue curve; a fixed ladder is silently calibrated to one
@@ -163,10 +172,11 @@ Our contributions:
   (\S\ref{sec:eval}).
 \item \textbf{A measured out-of-core design.} We measure the fetch set's
   cluster locality, build a two-tier on-disk layout, and run cold-read
-  benchmarks under \texttt{O\_DIRECT}. Exact search is $7$--$17\times$
-  faster than a full disk scan (\S\ref{sec:ooc}).
+  benchmarks under \texttt{O\_DIRECT}. Exact search is $2$--$17\times$
+  faster than our full disk scan, and $1.1$--$8.8\times$ faster than the
+  device's sequential-bandwidth limit for any scan (\S\ref{sec:ooc}).
 \item \textbf{An ADSampling baseline} in a shared work currency. It
-  locates the honest boundary between statistical and deterministic
+  locates the in-RAM boundary between statistical and deterministic
   pruning (\S\ref{sec:ads}).
 \end{enumerate}
 
@@ -179,15 +189,17 @@ the triangle inequality around reference points is the basis of ball
 trees~\cite{balltree}, vantage-point trees~\cite{vptree},
 GNAT~\cite{gnat}, and Elkan's accelerated $k$-means~\cite{elkan}. The
 approximate cousins are FAISS IVF~\cite{faiss}, which uses the same
-$k$-means geometry without exactness, and OPQ~\cite{opq}, a per-cell
-rotation that corresponds to the ellipsoid rung of the shape ladder in
-\S\ref{sec:theory}. Disk-resident ANN systems such as
+$k$-means geometry without exactness, and OPQ~\cite{opq}, which learns a
+global rotation. Its locally optimized variant LOPQ~\cite{lopq} rotates
+each cell separately, which corresponds to the ellipsoid rung of the shape
+ladder in \S\ref{sec:theory}. Disk-resident ANN systems such as
 DiskANN~\cite{diskann} and SPANN~\cite{spann} target the same
 memory-economics regime as we do, but they are approximate. The closest
 method in mechanism is ADSampling~\cite{adsampling}. It also evaluates
 incremental prefix distances after a rotation, but it replaces the
 deterministic bound with a sequential hypothesis test under a
-\emph{random} rotation. Its layout-level successor is PDX~\cite{pdx}. We
+\emph{random} rotation. PDX~\cite{pdx} accelerates this style of pruning
+with a dimension-major layout. We
 measure against ADSampling directly in \S\ref{sec:ads}. Our contribution
 is threefold: the \emph{exact composition} of the two bound families in
 one cascade, the \emph{measured self-configuration} including the cascade
@@ -218,23 +230,29 @@ distance is the sum of the first $k$ of the same terms, and
 $\sum_{i=k+1}^{d} (x'_i - y'_i)^2 \ge 0$.
 \end{proof}
 
-If the prefix distance to a candidate already exceeds the current search
+If the prefix distance to a candidate already reaches the current search
 radius $r$, the candidate is discarded without computing its full
 distance. This is the GEMINI no-false-dismissal
 condition~\cite{gemini}. Two choices turn the bound into an algorithm.
 The first choice is the rotation. Any orthogonal rotation satisfies
 Lemma~\ref{lem:pca}. PCA makes the bound \emph{tight}: by the
 Karhunen--Lo\`eve theorem, it packs the maximum variance into the first
-$k$ coordinates, and therefore, on average, the largest share of any
-pairwise distance (quantified in Eq.~(\ref{eq:tightness})). In other
+$k$ coordinates, and therefore the largest expected share of the squared
+distance between two random points (quantified in
+Eq.~(\ref{eq:tightness})). In other
 words, exactness is unconditional but quality is not. This separation
 recurs throughout the paper. The second choice is the source of the
 radius. Instead of a static threshold, a Top-$K$ probe at the coarsest
 width computes exact distances for the $K = 50$ most promising candidates
-and sets $r$ to their minimum. The prefix distance is a lower bound, so
-this radius is safe from the first comparison on. No prior knowledge of
-the neighbor distance is needed. A cascade of progressively finer
-prefixes then re-prunes the survivors at each width. On SIFT1M, widths
+and sets $r$ to their minimum. Because $r$ is the exact distance to an
+actual data point, it is at least the true nearest-neighbor distance; and
+because the prefix distance is a lower bound, pruning against such an $r$
+never discards the true neighbor. The radius is therefore safe from the
+first comparison on, and no prior knowledge of the neighbor distance is
+needed. A cascade of progressively finer prefixes then re-prunes the
+survivors at each width. In our implementation each level recomputes its
+prefix distance from the first coordinate, and the work counts in
+\S\ref{sec:eval} charge it that way. On SIFT1M, widths
 $(8,16,32,64)$ discard all but an average of 564 of $10^6$ vectors before
 any full-dimensional evaluation. Section~\ref{sec:funnel} replaces these
 fixed widths with widths derived from the data's own eigenvalue curve.
@@ -265,7 +283,7 @@ different data structure; each mirrors a quantizer family.}
 Shape & Bound cost & Tight for & Quantizer twin \\
 \midrule
 ball & $|\,\lVert q{-}c\rVert - d_p\,|$ & clusters & VQ \\
-ellipsoid & per-axis scaled & stretched clusters & OPQ \\
+ellipsoid & per-axis scaled & stretched clusters & LOPQ \\
 slab & projection residual & local low rank & local PCA \\
 cone$\times$annulus & closed form & radial/gain data & gain--shape \\
 \bottomrule
@@ -296,9 +314,10 @@ Inequality~(\ref{eq:ball}) is the triangle inequality, so it holds for
 the mean $d_p^2$, which makes the bound \emph{tight}. Three corollaries
 follow. First, stale centers remain correct as the dataset drifts.
 Pruning degrades gracefully, and re-clustering can wait until a
-diagnostic calls for it. Second, insertion is $O(1)$: assign the new
-point to its nearest existing centroid and store $d_p$. No re-clustering
-is required for correctness. Third, the composed index mirrors the PCA
+diagnostic calls for it. Second, insertion costs $O(kd)$, independent of
+$N$: assign the new point to its nearest existing centroid, store $d_p$,
+and raise that cluster's radius if needed. No re-clustering is required
+for correctness. Third, the composed index mirrors the PCA
 bound's property from \S\ref{sec:pca}. There, any orthogonal rotation is
 exact and PCA makes it tight. Here, any centers are exact and $k$-means
 makes them tight. The maximum of lower bounds is a lower bound, so the
@@ -320,24 +339,29 @@ candidates that its bound could not discard.
 the distance between the projections onto the first $k$ principal
 components---tight when variance concentrates along few directions. Right:
 the ball bound $\lVert q-c \rVert - d_p$ from the triangle
-inequality---tight when points huddle near their centroids. Each is loose
-exactly where the other is tight.}
+inequality---tight when points huddle near their centroids. The two
+bounds exploit different structure.}
 \label{fig:bounds}
 \end{figure}
 
-The PCA truncation bound is tight if and only if the eigenvalue spectrum
-decays steeply. This is a \emph{global, linear} property
-(Figure~\ref{fig:bounds}, left). The ball bound is tight if and only if
-points sit close to their centroids relative to the spread of
+The PCA truncation bound is tight when the eigenvalue spectrum decays
+steeply. This is a \emph{global, linear} property
+(Figure~\ref{fig:bounds}, left). The ball bound is tight when points sit
+close to their centroids relative to the spread of
 $\lVert q - c \rVert$. This is a \emph{local} property. It holds for
 multimodal data, and more generally for data of low intrinsic dimension,
 where $d_p$ and the centroid distances spread widely instead of
-concentrating. The two blind spots are disjoint by construction. Our
-clearest demonstration is a synthetic dataset of 512 tight clusters whose
-centers span all dimensions. Its spectrum is nearly flat: 95\% of the
-variance needs 111 of 128 dimensions, and the PCA cascade manages only
-$2.1\times$. Yet the ball bound prunes this dataset to 3\% before a
-single projection is computed.
+concentrating. The two conditions are different, not exclusive: data can
+satisfy both or neither (i.i.d.\ noise, \S\ref{sec:regimes}). A synthetic
+dataset of 512 tight clusters whose centers span all dimensions shows
+both sides at once. Its spectrum is nearly flat (at $d=128$, 95\% of the
+variance needs 110 of 128 dimensions), yet the PCA bound is not loose
+there: the 8-D level alone leaves 0.2\% of the points, because pruning is
+a tail event (\S\ref{sec:funnel}). What limits the PCA cascade to
+$2.1\times$ ($n=200$k, $d=64$) is the cost of that first level, eight
+multiply-adds for every point. The ball bound prunes the same data to
+0.2\% with one subtraction per point, before a single projection is
+computed.
 
 \section{The Self-Configuration Funnel}
 \label{sec:funnel}
@@ -365,10 +389,11 @@ that alone \emph{decides}.
   {\textbf{Tier 1 --- eigenvalue curve.} Rates each PCA level's expected
   tightness and \emph{picks the cascade widths}: one level at the
   dimension reaching each cumulative-variance target
-  $\{30,50,70,85\}\%$ (rounded to multiples of 8, capped at $d/2$).};
+  $\{30,50,70,85\}\%$ (rounded up to a multiple of 8, capped at
+  $d/2$).};
 \node (t2) [box, fill=ballorange!10, below=of t1]
   {\textbf{Tier 2 --- beyond-covariance statistics.} Excess kurtosis of
-  PCA components and $\mathrm{sqdep}$ against the $\sqrt{2/n}$ floor:
+  PCA components and $\mathrm{sqdep}$ against the $\sqrt{2/n}$ threshold:
   does structure beyond the covariance \emph{exist}? (Existence does not
   imply it is harvestable.)};
 \node (t3) [box, fill=black!4, below=of t2]
@@ -413,8 +438,9 @@ $2\lambda_i$, so for typical candidate pairs
 \frac{\sum_{i \le k} \lambda_i}{\sum_{i} \lambda_i},
 \end{equation}
 which is the cumulative explained variance at $k$. The curve therefore
-reads directly as the \emph{expected fractional tightness} of the
-width-$k$ bound on the population the cascade prunes. In this sense, each
+reads directly as the ratio of the expected squared width-$k$ prefix
+distance to the expected squared full distance, over the population the
+cascade prunes. In this sense, each
 dataset's curve is its prunability signature (Figure~\ref{fig:eigen}).
 Two blind spots follow from the same statement, and each one motivates a
 later tier. First, Equation~(\ref{eq:tightness}) is an expectation over
@@ -433,13 +459,15 @@ for that structure, and tier 3 settles the question.
 \includegraphics[width=\linewidth]{fig_eigen.pdf}
 \caption{Cumulative explained variance on 100k samples, with components
 on a log scale. Each curve is a dataset's prunability signature: by
-Eq.~(\ref{eq:tightness}), the curve equals the expected fractional
-tightness of a width-$k$ bound. Dots mark the widths the funnel selects
-at the $\{30,50,70,85\}\%$ targets (dotted lines). SIFT and GIST have
-steep heads. DBpedia's curve is shifted to the right, which is why a
-fixed $d{=}128$ ladder misreads it as unprunable. DEEP is the flattest,
-which matches its \textsc{moderate} verdict; its last width sits below
-the 85\% line because of the $d/2$ cap. The inset shows the raw spectra
+Eq.~(\ref{eq:tightness}), the curve is the ratio of expected squared
+prefix distance to expected squared distance at width $k$. Dots mark the
+widths the funnel selects at the $\{30,50,70,85\}\%$ targets (dotted
+lines); targets that round to the same width are merged, so SIFT gets
+three levels. SIFT and GIST have steep heads. DBpedia's curve is shifted
+to the right, which is why a fixed $d{=}128$ ladder misreads it as
+unprunable. Relative to its dimension, DEEP is the flattest, which
+matches its \textsc{moderate} verdict; its last width sits below the 85\%
+line because of the $d/2$ cap. The inset shows the raw spectra
 (per-component variance fraction, log--log), for readers who want the
 decay rates directly.}
 \label{fig:eigen}
@@ -454,10 +482,12 @@ result, the funnel misreads clearly prunable data as hopeless. The fix
 makes tier 1 constructive. We place one level at the dimension reaching
 each cumulative-variance target $\{30, 50, 70, 85\}\%$, rounded up to a
 multiple of 8 and capped at $d/2$. We measured this rule against
-hand-tuned ladders on 100k samples, using the work ratio. The rule ties
-on SIFT ($8.2\times$ vs.\ $8.5\times$). It \emph{wins} on GIST1M
-($15.2\times$ vs.\ $9.3\times$) and on DBpedia-OpenAI ($8.2\times$ vs.\
-$7.6\times$). A self-configuring index cannot have a hard-coded ladder.
+hand-picked ladders on 100k samples, using the work ratio: the fixed
+$(8,16,32,64)$ ladder on SIFT and GIST1M, and a deeper $(32,64,128,256)$
+ladder on DBpedia-OpenAI, where the fixed ladder measures only
+$1.3\times$. The rule ties on SIFT ($8.2\times$ vs.\ $8.5\times$). It
+\emph{wins} on GIST1M ($15.2\times$ vs.\ $9.3\times$) and on
+DBpedia-OpenAI ($8.2\times$ vs.\ $7.6\times$). A self-configuring index cannot have a hard-coded ladder.
 The eigen curve nominates the widths, and the trial below still decides.
 
 \textbf{Verdicts are work ratios, not survivor fractions.} We caught a
@@ -473,9 +503,10 @@ dimension-aware by construction.
 cheap statistics on the PCA-rotated sample. The first is the mean excess
 kurtosis of the components, which measures marginal non-Gaussianity. The
 second is $\mathrm{sqdep}$, the mean $|\mathrm{corr}(z_i^2, z_j^2)|$ over
-component pairs. It measures joint dependence that no rotation can
-remove, with a finite-sample noise floor of about $\sqrt{2/n}$. These
-statistics detect that structure beyond the covariance \emph{exists}.
+component pairs. It measures joint dependence that the PCA rotation does
+not remove. We compare it against $\sqrt{2/n}$, a conservative noise
+threshold: for independent components its expected value is about
+$\sqrt{2/(\pi n)}$, roughly 0.56 times as large. These statistics detect that structure beyond the covariance \emph{exists}.
 They do not tell whether it is \emph{harvestable}.
 
 \textbf{Tier 3 --- the measured trial.} Tier 3 fits the real hybrid index
@@ -485,30 +516,37 @@ The verdict is \textsc{add} or \textsc{skip}.
 
 Tier 3 must be the decider. The evidence is that the statistics
 mispredict in \emph{both} directions. On SIFT, tier 2 fires:
-$\mathrm{sqdep} = 0.032$ is $7\times$ the noise floor, so real
+$\mathrm{sqdep} = 0.032$ is $7\times$ the noise threshold, so real
 beyond-covariance structure exists. Yet the trial says \textsc{skip}
-($1.0\times$), because the ball bounds prune only 50--59\% and the bound
-work cancels the savings. On a latent-dimension-8 Gaussian, tier 2 is
-clean: kurtosis is near 0 and $\mathrm{sqdep}$ sits at the floor. Yet the
-trial says \textsc{add} ($1.9\times$), because low intrinsic dimension
-spreads $d_p$ widely and the bounds prune to 23\% with zero
-multimodality. We call the ball level's measured value its \emph{gain}:
-the wall-clock ratio of the cascade with the ball level to the cascade
-without it. Across all datasets, this gain is a monotone function of the
-ball level's own survivor rate (Figure~\ref{fig:law}). Survivors of 3\%
-give a gain of $4$--$14\times$; 15--23\% give $2$--$3\times$; 50--59\%
-give parity; and 100\% gives $0.8\times$, a measured loss. The trial
-measures exactly this quantity. No statistic substitutes for it.
+($1.0\times$), because 50--59\% of the points survive the ball bounds and
+the bound work cancels the savings. On a latent-dimension-8 Gaussian,
+tier 2 is clean: kurtosis is near 0 and $\mathrm{sqdep}$ sits at the
+threshold. Yet the trial says \textsc{add} ($1.9\times$), because low
+intrinsic dimension spreads $d_p$ widely and the bounds prune to 23\% with
+zero multimodality. We call the ball level's measured value its
+\emph{gain}: the cascade's wall-clock time without the ball level divided
+by its time with it, so a gain above 1 means the ball level helps. Across
+the eight datasets and trials of Figure~\ref{fig:law}, this gain falls
+monotonically as the ball level's own survivor rate rises. Survivors of
+0.2--3\% give gains of $4.2$--$6.6\times$; 15--23\% give
+$1.9$--$2.7\times$; 51--59\% give parity; and survivors near 100\% give
+$0.8$--$1.0\times$, no gain or a measured loss. This is an empirical
+trend at $d \le 128$, not a law: the level's cost per point is fixed,
+while the savings it buys grow with $d$. The trial measures exactly this
+quantity. No statistic substitutes for it.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.92\linewidth]{fig_law.pdf}
-\caption{The measured ball-value law across all eight datasets and trials
-(parity code): the ball level's wall-clock gain over the PCA-only cascade
-is a monotone function of its own pruning rate. The funnel's tier-3 trial
-measures precisely the $x$-axis quantity, which is why it predicts
-full-scale outcomes from a sample---including the negative verdicts below
-the dashed line.}
+\caption{The measured ball-value trend across eight synthetic and SIFT
+datasets and trials (implementation-parity code): the ball level's
+wall-clock gain over the PCA-only cascade falls monotonically as its own
+survivor rate rises. Labels give the sample size where it differs from
+the full dataset ($n=200$k, $d=64$ for the unlabeled synthetic points;
+60k, $d=128$ for the funnel versions). The funnel's tier-3 trial measures
+precisely the $x$-axis quantity, which is why it predicts full-scale
+outcomes from a sample---including the negative verdicts below the dashed
+line.}
 \label{fig:law}
 \end{figure}
 
@@ -520,15 +558,17 @@ the dashed line.}
 The offline build has three steps. First, fit PCA; the covariance is
 accumulated in chunks, so no full \texttt{float64} copy of the dataset is
 ever materialized. Second, select the cascade widths from the eigen curve
-(\S\ref{sec:funnel}). Third, fit $k$-means with
-$k = \mathrm{clip}(\sqrt{N}, 64, 4096)$, using MiniBatch (24\,s on SIFT1M
-for $k{=}1024$). For each point we store a cluster id (\texttt{int32})
-and $d_p$ (\texttt{float32}), 8 bytes in total, plus the $k \times d$
-centroids and the per-cluster radii. The choice of $k$ is measured, not
-tuned. A sweep over $k \in \{8, 64, 256, 1024, 4096\}$ on SIFT1M shows
-ball-level survivors falling monotonically from 81\% to 43\%, while fit
-cost rises from 4\,s to 47\,s. $\sqrt{N}$ sits at the knee of this
-gain-versus-cost curve, so it is the default.
+(\S\ref{sec:funnel}). Third, fit $k$-means with MiniBatch (24\,s on
+SIFT1M for $k{=}1024$). The default is
+$k = \mathrm{clip}(\sqrt{N}, 64, 4096)$; the 100k-sample trials use it
+($k=316$), while every full-scale experiment in \S\ref{sec:eval} fixes
+$k = 1024$, including DEEP10M. For each point we store a cluster id
+(\texttt{int32}) and $d_p$ (\texttt{float32}), 8 bytes in total, plus the
+$k \times d$ centroids and the per-cluster radii. The default comes from
+a measurement on one dataset. A sweep over
+$k \in \{8, 64, 256, 1024, 4096\}$ on SIFT1M shows ball-level survivors
+falling monotonically from 81\% to 43\%, while fit cost rises from 4\,s to
+47\,s. $\sqrt{N}$ sits at the knee of this gain-versus-cost curve.
 
 \subsection{Query Pipeline}
 
@@ -541,16 +581,27 @@ gain-versus-cost curve, so it is the default.
   probe of \S\ref{sec:pca}, seeded by ball bounds instead of coarse
   projections).
 \item Ball pruning: retain points with $\mathrm{bound}^2 < r^2$.
-\item PCA cascade $(8,16,32,64)$ on the survivors, with a \textbf{re-probe}
+\item PCA cascade on the survivors at the selected widths ($(8,16,32,64)$
+  on SIFT1M), with a \textbf{re-probe}
   at the first PCA level: before pruning, exact distances to the 50 best
   8-dimensional candidates tighten $r$. Without this step the ball-seeded
   radius is loose and the cascade degrades (8-D survivors 27.2\% versus
   14.6\% with it); with it, the cascade matches PCA-only tightness
   level-for-level.
-\item Full-distance check on the final survivors. The result is provably
-  identical to brute force, and is additionally verified against the
-  official ground truth in every experiment.
+\item Full-distance check on the final survivors. In exact arithmetic the
+  result is identical to brute force. It is additionally verified against
+  brute force, and against the official ground truth where one exists.
 \end{enumerate}
+
+\textbf{Floating point.} The exactness argument holds in exact
+arithmetic. In \texttt{float32}, rounding can make a computed bound
+exceed a computed distance by a few units in the last place. The ball
+bound is the most exposed: for near-duplicate points,
+$\lVert q - c \rVert$ and $d_p$ nearly cancel. Near-ties can therefore in
+principle resolve differently from a brute-force scan. Inflating the
+radius by each bound's rounding-error estimate before the pruning test
+closes this gap at negligible cost. The results reported here use the
+unmodified test, and they matched brute force on every query we checked.
 
 \subsection{Exact $k$-NN}
 \label{sec:knn}
@@ -567,7 +618,9 @@ is too small \emph{over}-prunes. The minimum (the 1-NN special case) is
 not affected by duplicates, but the $k$-th order statistic is. The radius
 must therefore be taken over \emph{distinct} evaluated points. The probe
 size also grows to $\max(50, k)$, so that the initial radius is a valid
-$k$-th statistic. Correctness is verified against brute force across
+$k$-th statistic. For $k \ge 50$ that statistic is the probe's maximum,
+the loosest valid choice; \S\ref{sec:knn-eval} shows what this costs at
+$k=100$. Correctness is verified against brute force across
 datasets, both cascade paths, and $k$ up to $n-1$. A second subtlety
 surfaced during verification. Integer-valued descriptors make exact
 distance \emph{ties} real: SIFT query~13 has two points at squared
@@ -582,9 +635,10 @@ index-versus-scan crossover: hundreds of scattered small reads can lose
 to one full sequential scan. Our two-tier design keeps \emph{resident}
 only what pruning decisions touch. The resident tier holds the rotated
 sketch of the first $\max(\mathrm{levels})$ PCA dimensions, the ball
-metadata (\texttt{assign}${+}d_p$, 8 bytes per point), the centroids, and
-the per-cluster offsets. Together this is $2$--$8\times$ smaller than the
-data. Full-dimensional vectors live on disk in two interchangeable files.
+metadata (\texttt{assign}${+}d_p$, 8 bytes per point), an 8-byte row
+index into the cluster-major file, the centroids, and the per-cluster
+offsets. On our four datasets this is $1.8$--$7.7\times$ smaller than the
+data (Table~\ref{tab:ooc}). Full-dimensional vectors live on disk in two interchangeable files.
 The first keeps the original order, so each fetch is one small aligned
 read. The second is \emph{cluster-major}: each $k$-means cluster is a
 contiguous, page-aligned block (under 0.4\% padding), written
@@ -601,9 +655,9 @@ clusters, and the final fetch becomes a few large reads. This is the
 wisdom of the VA-file~\cite{vafile}, SPANN~\cite{spann}, and
 DiskANN~\cite{diskann}: scan small sketches sequentially, and fetch
 survivors in a layout-aware way. The same $k$-means that supplies the
-bound also supplies the layout. Section~\ref{sec:ooc} shows that it earns
-its keep as a \emph{partitioner} even on datasets where the funnel
-rejects it as a \emph{pruning level}.
+bound also supplies the layout. Section~\ref{sec:ooc} measures when this
+pays: the cluster-major file beats per-point fetches only on DEEP10M,
+where the fetch set is largest.
 
 \section{Evaluation}
 \label{sec:eval}
@@ -613,15 +667,15 @@ hardware-independent work units. The reason is that wall-clock proved
 regime-dependent: the same algorithm measured $4.7\times$, $3.6\times$,
 $2.7\times$, and parity under changes of numeric type, machine load, and
 implementation tuning, while its work counts never moved (details below).
-The primary metrics are: (1) full-vector fetches per query, which is the
-out-of-core I/O currency; (2) total bytes touched per query,
-\emph{including the cost of the pruning machinery itself}; (3) resident
-RAM bytes per vector; and (4) the survivor cascade, which is the
-algorithmic fingerprint. Wall-clock appears as validation of a
-first-order cost model
-($t \approx \mathrm{bytes}/\mathrm{bandwidth} +
-\mathrm{ops}/\mathrm{throughput}$), with FAISS supplying the
-tuned-constants reference. A reader can therefore plug their own
+The primary metrics are: (1) distance terms per query, with the pruning
+machinery's own work charged separately as bound-ops; (2) full-vector
+fetches and bytes read from storage per query, which are the out-of-core
+I/O currency; (3) resident RAM bytes per vector; and (4) the survivor
+cascade, which is the algorithmic fingerprint. Wall-clock appears as a
+check on a first-order cost model
+($t \approx \mathrm{reads} \cdot \mathrm{latency} +
+\mathrm{bytes}/\mathrm{bandwidth} + \mathrm{ops}/\mathrm{throughput}$),
+with FAISS supplying the tuned-constants reference. A reader can therefore plug their own
 machine's constants into our work numbers and predict their own outcome.
 
 \textbf{Setup.} Intel i9-9900K (8C/16T, AVX2${+}$FMA, no AVX-512),
@@ -630,15 +684,19 @@ dual-channel DDR4, 30\,GB usable RAM; NVMe SSD measured under
 per random 4\,KiB read; \texttt{faiss-cpu} 1.15 dispatching its AVX2 build;
 NumPy and OpenBLAS at the AVX2 tier---baseline and FAISS use the same
 instruction set. SIFT1M in-RAM timings (Table~\ref{tab:sift}) are medians
-of 5 repetitions on a quiet machine with warm cache; the multi-dataset,
-$k$-NN, and out-of-core tables are medians or means over 100 queries in a
-single repetition on a quiet machine (work counts and byte counts are
-exact and run-invariant; only the millisecond columns carry run noise).
-Exactness is verified on every query of every experiment---against
-official ground truth where one exists, against in-harness brute force
-otherwise. Results are CPU-governor-insensitive (medians within 2\%).
+of 5 repetitions on a quiet machine with warm cache. The multi-dataset
+and $k$-NN tables report mean ms/query over 100 queries in a single
+repetition on a quiet machine. The out-of-core table reports median
+ms/query and mean bytes and reads (Table~\ref{tab:ooc}). Work counts and
+byte counts are exact and run-invariant; only the millisecond columns
+carry run noise. In RAM, exactness is verified on every query of every
+experiment---against in-harness brute force, and against official ground
+truth where one exists. Out of core, the point and block arms are checked
+against the scan arm on its 10 queries. Results are
+CPU-governor-insensitive (medians within 2\%).
 
 \subsection{SIFT1M}
+\label{sec:sift}
 
 \begin{table}[t]
 \caption{SIFT1M, 100 official queries, medians of 5 repetitions,
@@ -676,8 +734,8 @@ type, machine load, and implementation tuning in this paper.}
 Table~\ref{tab:sift} gives the in-RAM picture, and
 Figure~\ref{fig:cascade} shows the cascade behind it. The PCA cascade
 alone reaches $2.7\times$. \textbf{The ball level is a wall-clock tie on
-SIFT}: its 50\% pruning saves about as much as its bound computation
-costs. This is exactly what the sample trial predicts (\textsc{skip},
+SIFT}: halving the candidates saves about as much as its bound
+computation costs. This is exactly what the sample trial predicts (\textsc{skip},
 \S\ref{sec:funnel}). On SIFT, the hybrid's value is therefore limited to
 the out-of-core and residency settings (\S\ref{sec:layout}). The
 wall-clock case for the ball level rests on clustered and
@@ -716,16 +774,22 @@ quantitative rather than rhetorical. Third, the hybrid cuts terms further
 ($12.6 \to 8.7$\,M) but adds $1.0$\,M bound operations of a different
 kind: gathers rather than streaming reads. This is why its wall-clock
 ties PCA-only despite the smaller term count. It is also why work
-accounting that omits the pruning machinery would mislead.
+accounting that omits the pruning machinery would mislead. Both counts
+charge each level for its full prefix, because the implementation
+recomputes it from the first coordinate. Accumulating only the newly
+added coordinates would, at the same survivor counts, cut the terms to
+about 10.3\,M (PCA-only) and 6.4\,M (hybrid).
 
 FAISS \texttt{IndexFlatL2} wins the in-RAM race outright. It scans all
 $10^6$ vectors in 29.3\,ms on a single thread. The gap is fusion, not
 SIMD. Both sides run AVX2, but FAISS's kernel makes one pass over the
 data ($\sim$512\,MB of traffic per query), while NumPy materializes
-temporaries ($\sim$3 passes, 1.5--2\,GB). That is a $5.6\times$ advantage
+temporaries ($\sim$3 passes, 1.5--2\,GB). That is a $5.7\times$ advantage
 at identical work. This comparison scopes our claim rather than defeating
-it. The cascade touches $1{,}700\times$ fewer full vectors. It needs only
-8--40 resident bytes per vector, against 512 for any flat scan. In
+it. The cascade touches $1{,}700\times$ fewer full vectors. Out of core
+it keeps 272 bytes per vector resident (the 64-dimensional sketch plus
+per-point metadata), against 512 for a flat scan that holds the data in
+RAM. In
 addition, its bounds compose with FAISS-grade kernels rather than compete
 with them: the cascade could drive such a kernel over its survivor sets.
 Disk-resident ANN systems occupy the same economics but give up
@@ -734,18 +798,18 @@ speed, work, and the machine's most expensive resource.
 
 \begin{table}[t]
 \caption{The exactness--speed--work--memory trade-off on SIFT1M (fp32,
-$10^6 \times 128$). Flat scans must hold every vector resident
-(512\,B/vector). The cascades keep only pruning metadata resident and
-page full vectors from storage (\S\ref{sec:layout}): the 8-dimensional
-sketch costs 32\,B/vector, and the ball metadata costs 8\,B/vector.
-Parentheses give the RAM saving relative to a flat scan. The hybrid's
-work is written as distance terms plus ball bound-ops (as in
-Table~\ref{tab:ops}); the two are kept separate because a bound-op is
-cheaper than a term, so they are not summed. The last row situates
-disk-resident ANN systems. Their residency (taken from their own reports,
-not measured here) is comparable to the cascades', but they answer the
-approximate problem. This work occupies the exact-at-cascade-residency
-quadrant.}
+$10^6 \times 128$). The ms/query column is measured in RAM. Flat scans
+must hold every vector resident (512\,B/vector). The cascades can instead
+keep only their sketch resident and page full vectors from storage
+(\S\ref{sec:layout}, Table~\ref{tab:ooc}): the 64-dimensional sketch of
+the $(8,16,32,64)$ ladder costs 256\,B/vector, and the ball metadata
+costs 8\,B/vector. Parentheses give the RAM saving relative to a flat
+scan. The hybrid's work is written as distance terms plus ball bound-ops
+(as in Table~\ref{tab:ops}); the two are kept separate because a
+bound-op is cheaper than a term, so they are not summed. The last row
+situates disk-resident ANN systems. Their residency (taken from their own
+reports, not measured here) is lower than the cascades', but they answer
+the approximate problem.}
 \label{tab:resources}
 \small
 \resizebox{\columnwidth}{!}{%
@@ -756,8 +820,8 @@ Method & Exact & ms/query & Terms (M) & Resident RAM \\
 FAISS-flat, batch-100 & yes & 5.9 & 128.0 & 512\,MB \,(1$\times$) \\
 FAISS-flat, 1 thread & yes & 29.3 & 128.0 & 512\,MB \,(1$\times$) \\
 brute (NumPy) & yes & 167.3 & 128.0 & 512\,MB \,(1$\times$) \\
-PCA-only & yes & 61.1 & 12.6 & 32\,MB \,(16$\times$) \\
-hybrid & yes & 62.2 & 8.7\,{\small$+1.0$} & 8--40\,MB \,(13--64$\times$) \\
+PCA-only & yes & 61.1 & 12.6 & 256\,MB \,(2.0$\times$) \\
+hybrid & yes & 62.2 & 8.7\,{\small$+1.0$} & 264\,MB \,(1.9$\times$) \\
 \midrule
 IVF / disk ANN~\cite{faiss,diskann,spann} & no & --- & --- & $\sim$8--64\,MB \\
 \bottomrule
@@ -779,13 +843,17 @@ bandwidth contention slows the scan-bound baseline the most, which
 flatters all pruners. Survivor counts were invariant through every one of
 these changes. This is why we adopted the metrics policy above.
 
-\subsection{Four Real Datasets: the Gain Grows with Dimension}
+\subsection{Four Real Datasets}
 \label{sec:datasets}
 
 \begin{table}[t]
-\caption{Exact 1-NN at full scale, eigen-curve-selected levels, PCA-only
-cascade. Terms count per-dimension $(x{-}y)^2$ evaluations; a scan is
-$n \cdot d$ by definition. All queries exact.}
+\caption{Exact 1-NN at full scale, PCA-only cascade. Levels are
+eigen-curve-selected for GIST1M, DBpedia-OpenAI, and DEEP10M; SIFT1M uses
+the fixed $(8,16,32,64)$ ladder, which does slightly less work than its
+eigen-curve levels $(8,16,40)$ (12.6 vs.\ 12.9\,M terms). Wall is
+wall-clock speedup over the NumPy brute-force scan. Terms count
+per-dimension $(x{-}y)^2$ evaluations; a scan is $n \cdot d$ by
+definition. All queries exact.}
 \label{tab:datasets}
 \small
 \begin{tabular}{@{}lrrrrr@{}}
@@ -801,34 +869,40 @@ DEEP10M & $10^7$ & 96 & 1.2$\times$ & 244.0 & 3.9$\times$ \\
 \end{table}
 
 Table~\ref{tab:datasets} answers a question that SIFT alone cannot: does
-anything beyond SIFT prune? Everything we measured does. Moreover, the
-wall-clock gain \emph{grows} with dimensionality: $2.6\times$ at 128
-dimensions, $6.2\times$ at 960, and $6.0\times$ at 1536. The reason is
-simple. Brute force pays the full dimension for every point, while the
-cascade pays only for the intrinsic structure. The most important result
-concerns the modern learned embeddings (DBpedia abstracts under OpenAI
-\texttt{ada-002}). Their flat spectra (664 of 1536 dimensions for 95\%
-variance) looked like the natural failure mode of our approach. In fact,
-they prune to 0.64\% finalists once the cascade widths respect the eigen
-curve (\S\ref{sec:funnel}). With the \emph{fixed} $(8,16,32,64)$ ladder,
-the same data measures only $1.3\times$ and reads as unprunable. DEEP10M
-is the honest boundary case. Its 96 dimensions are already-compressed
-deep features, and they leave a $3.9\times$ work reduction but only
-$1.2\times$ in-RAM wall-clock. The funnel's sample verdict
-(\textsc{moderate}, ``useful out-of-core'') says exactly this in
-advance, and \S\ref{sec:ooc} confirms where its value lives. Finally, on
-all four datasets, the ball level's sample verdict (\textsc{skip}
-everywhere; survivor rates 50--99\%) was confirmed at full scale. The
-ball-value law of \S\ref{sec:funnel} holds on real data at
+anything beyond SIFT prune? All four real datasets do. The wall-clock gain
+over the NumPy scan is larger at high dimension: $2.6\times$ at 128
+dimensions against $6.2\times$ at 960 and $6.0\times$ at 1536 (and
+$1.2\times$ on the 96-dimensional DEEP10M). Brute force pays the full
+dimension for every point, while the cascade pays mostly for its first
+levels. These are gains over the same NumPy baseline as
+Table~\ref{tab:sift}; we timed FAISS only on SIFT1M. The most important
+result concerns the modern learned embeddings (DBpedia abstracts under
+OpenAI \texttt{ada-002}). Their flat spectra (664 of 1536 dimensions for
+95\% variance) looked like the natural failure mode of our approach. In
+fact, once the cascade widths respect the eigen curve
+(\S\ref{sec:funnel}), the out-of-core cascade fetches only 0.10\% of the
+vectors (Table~\ref{tab:ooc}). With the \emph{fixed} $(8,16,32,64)$
+ladder, the 100k sample measures only $1.3\times$ and reads as
+unprunable. DEEP10M is the honest boundary case. Its 96 dimensions are
+already-compressed deep features, and they leave a $3.9\times$ work
+reduction but only $1.2\times$ in-RAM wall-clock. The funnel's sample
+verdict (\textsc{moderate}, ``useful out-of-core'') anticipates this, and
+\S\ref{sec:ooc} measures its out-of-core value: $2.3$--$2.6\times$
+against our scan, but only $1.1$--$1.3\times$ against the device's
+sequential limit. Finally, on all four datasets, the ball level's sample
+verdict (\textsc{skip} everywhere; survivor rates 51--99.9\%) was
+confirmed at full scale. The
+ball-value trend of \S\ref{sec:funnel} holds on real data at
 $10^6$--$10^7$ points.
 
 \subsection{Exact $k$-NN}
 \label{sec:knn-eval}
 
 \begin{table}[t]
-\caption{Exact $k$-NN, PCA-only cascade, wall-clock speedup over brute
-force and (in parentheses) work reduction in terms. All queries exact;
-$k{=}100$ additionally matches official ground truth up to boundary ties.}
+\caption{Exact $k$-NN, PCA-only cascade, levels as in
+Table~\ref{tab:datasets}: wall-clock speedup over brute force and (in
+parentheses) work reduction in terms. All queries exact; $k{=}100$
+additionally matches official ground truth up to boundary ties.}
 \label{tab:knn}
 \small
 \begin{tabular}{@{}lrrr@{}}
@@ -843,24 +917,33 @@ DEEP10M & 1.2$\times$ (3.9$\times$) & 0.8$\times$ (2.0$\times$) & 0.3$\times$ (0
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:knn} reports the $k$-NN generalization (\S\ref{sec:knn})
-with deliberate honesty. The method wins up to $k \approx 10$, and it
-\emph{loses} the in-RAM wall-clock at $k = 100$ on every dataset. The
-mechanism is structural, not incidental. The pruning radius is the $k$-th
-best distance, which grows with $k$, and the survivor counts grow with
-it. At $k{=}100$ the ball level passes 99--100\% of the points, and the
-cascade approaches a scan with extra overhead. However, the $k{=}100$
-work reductions ($1.2$--$1.6\times$ on the million-scale sets) still
-translate into fewer bytes fetched out of core. That is where large-$k$
-exact queries should run (\S\ref{sec:ooc}).
+Table~\ref{tab:knn} reports the $k$-NN generalization (\S\ref{sec:knn}).
+The PCA-only cascade wins at $k=10$ on three of the four datasets
+(DEEP10M: $0.8\times$), and it \emph{loses} the in-RAM wall-clock at
+$k = 100$ on every dataset. Part of the loss is structural: the pruning
+radius is the $k$-th best distance, which grows with $k$, and the survivor
+counts grow with it. Part comes from the probe. With $\max(50,k)$ probe
+points, the $k{=}100$ radius is the probe's maximum. The hybrid path takes
+its radius over the probe and the re-probe together, up to $2k$ points.
+At $k{=}100$ it beats brute force on GIST1M ($1.3\times$) and
+DBpedia-OpenAI ($1.4\times$), even though its ball level passes
+99--100\% of the points, but not on SIFT1M ($0.9\times$) or DEEP10M
+($0.4\times$). A larger probe is therefore the first fix for large $k$.
+DEEP10M's $k{=}100$ work exceeds a scan ($0.6\times$) because each level
+recomputes its prefix from scratch (\S\ref{sec:sift}). We have not
+measured large-$k$ queries out of core.
 
 \subsection{Structure Regimes}
 \label{sec:regimes}
 
 \begin{table}[t]
-\caption{Structure regimes (synthetic, $n=200$k, $d=64$ for the first two;
-$n=60$k, $d=128$ for the funnel rows), implementation parity. ``Ball
-survivors'' is the ball level's own pruning rate---the quantity the funnel's
+\caption{Structure regimes, implementation parity. The two synthetic rows
+above SIFT1M have $n=200$k, $d=64$; the two below are the funnel's
+$n=60$k, $d=128$ datasets. Latent-$m$ data is an $m$-dimensional standard
+Gaussian mapped to $d$ dimensions by a random Gaussian matrix, plus
+isotropic noise ($\sigma=0.1$ for $m=8$, $0.5$ for $m=48$); the clusters
+have standard-Gaussian centers and $\sigma=0.05$. ``Ball survivors'' is
+the fraction of points the ball level keeps---the quantity the funnel's
 trial measures.}
 \label{tab:regimes}
 \small
@@ -868,33 +951,40 @@ trial measures.}
 \toprule
 Dataset & PCA-only & Hybrid & Ball surv. & Verdict \\
 \midrule
-512 tight clusters & 2.1$\times$ & \textbf{13.9$\times$} & 3\% & \textsc{add} \\
-latent-8 Gaussian & 2.1$\times$ & 5.6$\times$ & 15--23\% & \textsc{add} \\
-SIFT1M & 2.7$\times$ & 2.7$\times$ & 50--59\% & \textsc{skip} \\
+512 tight clusters & 2.1$\times$ & \textbf{13.9$\times$} & 0.2\% & \textsc{add} \\
+latent-8 Gaussian & 2.1$\times$ & 5.6$\times$ & 15\% & \textsc{add} \\
+SIFT1M & 2.7$\times$ & 2.7$\times$ & 51\% & \textsc{skip} \\
 latent-48 Gaussian & 1.9$\times$ & 0.8$\times$ of PCA & 100\% & \textsc{skip} \\
-i.i.d.\ Gaussian & 0.3$\times$ & --- & 100\% & \textsc{skip} (all) \\
+i.i.d.\ Gaussian & 0.3$\times$ & --- & 99.9\% & \textsc{skip} (all) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Table~\ref{tab:regimes} spans the design space, and it deliberately
-includes the negative results. The flat-spectrum clustered dataset is
-PCA's blind spot. There, the ball level prunes to 3\% before any
-projection is computed, and the hybrid reaches $13.9\times$. Its bound
-requires no multiplications, so it undercuts even the 8-dimensional scan.
+includes the negative results. The flat-spectrum clustered dataset shows
+where the ball level pays. Its PCA bound is tight in the tail (the 8-D
+level leaves 0.19\% of the points), but that level costs eight
+multiply-adds for every point, which caps the PCA-only cascade at
+$2.1\times$. The ball level prunes to 0.2\% before any projection is
+computed. Its bound requires no multiplications, so it undercuts even the
+8-dimensional scan, and the hybrid reaches $13.9\times$. The latent-8
+row works the same way: its 8-D level already leaves almost nothing, and
+the ball level wins by being the cheaper first filter.
 Figure~\ref{fig:work} makes the contrast with SIFT concrete in the work
-currency. On SIFT the two cascades do almost the same work (9.8\% vs
-7.6\% of a scan), which is the tie. On the clustered data the hybrid does
-far less work (2.2\% vs 12.8\%), and most of its small cost is the ball
-bound-ops, not distance terms. This is what a survivor-count plot cannot
+currency. On SIFT the two cascades do almost the same work, which is the
+tie: 9.8\% of a scan in terms for PCA-only, against 6.8\% in terms plus
+0.8\% in bound-ops for the hybrid. On the clustered data the hybrid does
+far less work: 12.8\% against 0.6\% in terms plus 1.6\% in bound-ops, so
+most of its small cost is the ball bound-ops, not distance terms. This is what a survivor-count plot cannot
 show: both cascades reach the same survivors, but the hybrid reaches them
 with much less work.
 On the latent-48 blob, the ball level is measured to \emph{hurt}
 ($0.8\times$): 100\% of points survive, so the level is pure overhead. On
 i.i.d.\ noise, the diagnostic correctly reports that nothing works and
 that brute force or ANN should be used. The i.i.d.\ row also shows the
-PCA cascade itself losing to brute force ($0.3\times$). That is the
-honest boundary of the entire approach.
+PCA cascade itself losing to brute force ($0.3\times$); because each
+level recomputes its prefix, it even does more terms than a scan. That is
+the honest boundary of the entire approach.
 
 \begin{figure}[t]
 \centering
@@ -902,10 +992,10 @@ honest boundary of the entire approach.
 \caption{Per-query work of the two cascades, as a percentage of a
 brute-force scan, on a tie dataset (SIFT1M) and an add dataset (512
 clusters). Bars are terms; the hatched segment is the ball level's
-bound-ops, charged separately. On SIFT the bars are nearly equal, which
-is the wall-clock tie. On the clustered data the hybrid does far less
-work. Both cascades return the same exact result and reach the same
-survivors (Table~\ref{tab:regimes}); only the work differs, which a
+bound-ops, charged separately and stacked only for display. On SIFT the
+bars are nearly equal, which is the wall-clock tie. On the clustered data
+the hybrid does far less work. Both cascades return the same exact
+result (Table~\ref{tab:regimes}); only the work differs, which a
 survivor-count plot cannot display.}
 \label{fig:work}
 \end{figure}
@@ -934,17 +1024,23 @@ useless level.
 \begin{table}[t]
 \caption{Cold-read exact 1-NN under \texttt{O\_DIRECT} (every byte from
 the device; page cache bypassed, so each query is cold by construction).
-Scan streams the whole file; point fetches each needed vector from the
-original-order file; block fetches whole clusters from the cluster-major
-file. All arms return identical exact results.}
+Hybrid cascade on the resident sketch, with eigen-curve levels except on
+SIFT1M, which uses $(8,16,32,64)$ (see text). Resident tier per vector: 272\,B (SIFT1M),
+496\,B (GIST1M), 1{,}424\,B (DBpedia), 208\,B (DEEP10M). Scan reads the
+whole file in 8\,MiB chunks and runs the NumPy brute-force kernel on each
+chunk before issuing the next read. Point fetches each needed vector from
+the original-order file, one read at a time; block fetches whole clusters
+from the cluster-major file. ms/query is the median (10 queries for scan,
+100 for point and block); MiB/query and reads are means. Point and block
+match the scan arm's exact results on its 10 queries.}
 \label{tab:ooc}
 \small
 \begin{tabular}{@{}llrrr@{}}
 \toprule
-Dataset & Arm & ms/query & MB/query & Reads \\
+Dataset & Arm & ms/query & MiB/query & Reads \\
 \midrule
 SIFT1M       & scan  & 402  & 488  & 62 \\
-(488\,MB)    & point & \textbf{61} \,(7$\times$) & \textbf{2.3} \,(212$\times$) & 588 \\
+(488\,MiB)   & point & \textbf{61} \,(7$\times$) & \textbf{2.3} \,(212$\times$) & 588 \\
              & block & 81 \,(5$\times$) & 37 & 73 \\
 \midrule
 GIST1M       & scan  & 3006 & 3663 & 458 \\
@@ -966,39 +1062,49 @@ Section~\ref{sec:layout} motivated the two-tier layout from structure.
 Table~\ref{tab:ooc} now measures it end to end. The protocol is simple:
 all reads use \texttt{O\_DIRECT} with page-aligned buffers. The page
 cache is bypassed, so every query pays device prices. This is a
-cold-cache protocol with no cache-flushing ceremony. It is also
-deliberately conservative on NVMe, where cheap random reads and high
-sequential bandwidth both favor the \emph{scan} baseline.
+cold-cache protocol with no cache-flushing ceremony. Our scan baseline,
+however, does not overlap I/O with compute: it reaches 1.0--1.2\,GiB/s,
+against the device's 2.04\,GiB/s. A scan pipelined to the device limit
+would take 234\,ms on SIFT1M, 1.75\,s on GIST1M and DEEP10M, and 2.8\,s on
+DBpedia-OpenAI. Against that limit, the point arm's speedups are
+$3.8\times$, $4.2\times$, $8.8\times$, and $1.1\times$, respectively.
 
 There are three findings. \textbf{First, the headline.} On the OpenAI
 embeddings, exact cold-read 1-NN takes 318\,ms against a 5.4-second scan,
-a $17\times$ speedup. It reads 8\,MB instead of 5.9\,GB, which is
-$730\times$ fewer bytes. The byte ratios are device-independent. On
-storage that is slower or more seek-bound than NVMe, they translate into
-even larger time ratios. \textbf{Second, the fetch set is highly
-cluster-local.} The embeddings' $\sim$1{,}014 fetched points occupy a
-median of 27 of 1024 clusters, while uniform placement would touch about
-644. SIFT's 583 points occupy 52 clusters. The reason is that the nearest
-neighbors of a query are near each other. This locality is what makes the
-cluster-major arm viable at all. It also means the $k$-means structure
-earns its place as a \emph{partitioner} even where the funnel rejects its
-\emph{bound} (\textsc{skip} on all four datasets). The same geometry is
-useless for compute but valuable for layout. \textbf{Third,
-point-versus-block is a device property.} With serial reads at
-80\,\textmu s, the point arm's few thousand small fetches beat the block
-arm's fewer but heavier reads on three of the four datasets. Only
-DEEP10M's 50k-point fetch set flips the order. Parallel small reads would
-extend the point arm's advantage, since NVMe queue depths reward exactly
-that pattern. Seek-bound media would flip every row toward block. The
-layout writes both files, so the diagnostic should pick per device.
+a $17\times$ speedup ($8.8\times$ against the device's sequential limit).
+It reads 8\,MiB instead of 5.7\,GiB, which is $730\times$ fewer bytes. The
+byte ratios are device-independent. How they translate into time depends
+on how much a device could stream in the time of one random read: about
+175\,KB on this NVMe drive (80\,\textmu s at 2.04\,GiB/s), but about
+1.5\,MB on a disk with a 10\,ms seek and 150\,MB/s of bandwidth. Seek-bound media therefore favor
+the scan and the block arm, not the point arm. \textbf{Second, the fetch
+set is highly cluster-local.} The embeddings' $\sim$1{,}014 fetched
+points occupy an average of 27 of 1024 clusters, while uniform placement
+would touch about 644. SIFT's 583 points occupy 52 clusters. The reason
+is that the nearest neighbors of a query are near each other. This
+locality is what makes the cluster-major arm viable at all. Whether it
+pays depends on the fetch-set size: the block arm beats the point arm only
+on DEEP10M. \textbf{Third, point-versus-block is a device property.} The
+point arm issues one read at a time. Its scattered small fetches beat the
+block arm's fewer but heavier reads on three of the four datasets; only
+DEEP10M's fetch set flips the order. The mean fetch counts in
+Table~\ref{tab:ooc} are dominated by a minority of far-neighbor queries.
+The median query fetches 152 vectors on SIFT1M, 2{,}360 on GIST1M, 120 on
+DBpedia-OpenAI, and 5{,}386 on DEEP10M, against means of 588, 12{,}379,
+1{,}028, and 50{,}356. This is why the median times sit well below the
+mean read count times 80\,\textmu s. Parallel small reads would extend the
+point arm's advantage, since NVMe queue depths reward exactly that
+pattern. Seek-bound media would flip every row toward block. The layout
+writes both files, so the diagnostic should pick per device.
 
-One design lesson surfaced only here: \emph{the optimal cascade depth is
-deeper out of core than in RAM}. SIFT's eigen-curve levels $(8,16,40)$
-minimize in-RAM terms, but they fetch 3{,}381 points. The deeper
-$(8,16,32,64)$ ladder spends more sketch terms to fetch only 588 points,
-and it wins the cold-read benchmark (61 vs.\ 91\,ms). In RAM, terms are
-the currency. Out of core, fetched bytes are. The level-selection
-objective should follow the medium.
+One design lesson surfaced only here: \emph{cascade depth matters far more
+out of core than in RAM}. On SIFT1M the eigen-curve rule stops at
+$(8,16,40)$, because the 85\% target is reached at 40 dimensions. Those
+levels fetch 3{,}381 points. The deeper $(8,16,32,64)$ ladder fetches only
+588 and wins the cold-read benchmark (61 vs.\ 91\,ms). In RAM the same
+change saves only 2\% of the terms (12.6 vs.\ 12.9\,M), because a
+finalist costs $d$ terms there but a random read here. The
+level-selection objective should follow the medium.
 
 \subsection{Baseline: ADSampling}
 \label{sec:ads}
@@ -1036,18 +1142,22 @@ our own first measurement. An earlier float32 ground-truth check
 miscounted near-duplicate points as recall failures, due to catastrophic
 cancellation. Under float64 verification, ADS at the default $\epsilon_0$
 achieved perfect recall on every $k{=}1$ query we ran. It missed one true
-neighbor in 600 query-tasks (GIST, $k{=}10$, recall 0.9990). The
+neighbor in 800 query-tasks (GIST, $k{=}10$, recall 0.9990). The
 distinction that matters is therefore \emph{guarantee versus empirical},
 not observed failure. The distinction is structural, because no
 $\epsilon_0$ turns the test into a bound.
 
-The decisive difference is not in RAM. ADS pays its $\Delta d = 32$ floor
-for \emph{every} point in the dataset. SIFT's 33.0M terms and DEEP10M's
-325.8M terms sit exactly at $32n$. ADS must therefore touch every vector,
-and out of core it reads full-scan bytes regardless of its parameters.
-Its successor PDX~\cite{pdx} restructures the layout dimension-major, but
-it still visits every vector. Our cascade fetches only 0.06--1\% of the
-vectors (Table~\ref{tab:ooc}). Finally, the two methods compose rather
+The two methods also differ out of core. ADS pays its $\Delta d = 32$
+floor for \emph{every} point in the dataset. SIFT's 33.0M terms and
+DEEP10M's 325.8M terms sit just above $32n$. ADS therefore touches every
+vector, and without a resident sketch it would read full-scan bytes
+regardless of its parameters. With the two-tier layout we give our own
+cascade, however, its first test could run on a resident 32-dimensional
+sketch (128\,B/vector, less than our 256\,B/vector on SIFT1M), and only
+the candidates that pass would be fetched. We have not measured that
+configuration. PDX~\cite{pdx} restructures the layout dimension-major,
+but it still visits every vector. Our cascade fetches only 0.06--1.2\% of
+the vectors (Table~\ref{tab:ooc}). Finally, the two methods compose rather
 than compete: a statistical test could accelerate the final full-distance
 checks over our survivor sets, at the usual price.
 
@@ -1060,9 +1170,13 @@ the same time. The funnel exists precisely to detect this case and say so
 RAM. At native-code constants, the in-RAM wall-clock race belongs to
 fused exhaustive scans (FAISS) at the 128-D scale. ADSampling's
 statistical pruning also beats our deterministic bounds in RAM on the
-highest-dimensional embeddings (\S\ref{sec:ads}). Exact $k$-NN loses the
-in-RAM wall-clock by $k = 100$ on every dataset we measured
-(\S\ref{sec:knn-eval}). The out-of-core measurements use
+highest-dimensional embeddings (\S\ref{sec:ads}). The PCA-only cascade
+loses the in-RAM wall-clock at $k = 100$ on every dataset we measured; the
+hybrid path's larger evaluated set recovers $1.3$--$1.4\times$ on GIST1M
+and DBpedia-OpenAI, but not on SIFT1M or DEEP10M (\S\ref{sec:knn-eval}).
+Our out-of-core scan baseline does not overlap I/O with compute, so
+speedups against it overstate the gain over a pipelined scan
+(\S\ref{sec:ooc}). The out-of-core measurements use
 \texttt{O\_DIRECT} on datasets that fit in RAM. This is valid
 device-price accounting, but a larger-than-RAM run, with parallel rather
 than serial fetch I/O, remains future work. Updates are also future work:
@@ -1080,11 +1194,12 @@ index that configures itself end to end. The cascade widths come from the
 eigenvalue curve; without this step, 1536-dimensional embeddings
 masquerade as unprunable. The levels come from a measured trial, and its
 sample verdicts are confirmed at $10^6$--$10^7$ scale on four real
-datasets. The breaking points are stated honestly: $k = 100$ in RAM, and
-i.i.d.\ data everywhere. The out-of-core argument has become a
-measurement: exact cold-read queries run $7$--$17\times$ faster than a
-disk scan and read $40$--$730\times$ fewer bytes, against a
-state-of-the-art statistical pruner that structurally cannot leave RAM.
+datasets. The breaking points are stated honestly: $k = 100$ in RAM for
+the PCA-only cascade, DEEP10M's already-compressed features, and i.i.d.\
+data everywhere. The out-of-core argument has become a measurement: exact
+cold-read queries run $2$--$17\times$ faster than our disk scan
+($1.1$--$8.8\times$ against the device's sequential limit) and read
+$18$--$730\times$ fewer bytes.
 The recurring lesson of this work is simple. Every constant we had
 silently tuned to one dataset---the cascade widths, the verdict
 thresholds, even our own ground-truth checker---failed on the next

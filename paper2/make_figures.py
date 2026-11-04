@@ -119,21 +119,27 @@ pts = [
     (14.8, 2.65, "latent-8"),
     (22.8, 1.9, "latent-8 (60k)"),
     (50.6, 0.98, "SIFT1M"),
-    (59.4, 1.0, "SIFT (100k)"),
-    (99.9, 0.96, "i.i.d."),
-    (100.0, 0.8, "latent-48"),
+    (59.4, 1.0, "SIFT1M (100k)"),
+    (99.9, 0.96, "i.i.d. (60k)"),
+    (100.0, 0.8, "latent-48 (60k)"),
 ]
 fig, ax = plt.subplots(figsize=(3.4, 2.4))
 xs, ys = [p[0] for p in pts], [p[1] for p in pts]
 ax.axhline(1.0, color=GRAY, lw=1.0, ls="--", zorder=1)
 ax.annotate("no effect", (0.3, 1.0), textcoords="offset points",
             xytext=(0, 4), color=GRAY, fontsize=7)
-ax.plot(xs, ys, color=ORANGE, lw=1.0, alpha=0.5, zorder=2)
 ax.scatter(xs, ys, s=26, color=ORANGE, zorder=3)
-offs = [(5, 3), (5, 3), (5, 3), (5, 3), (-12, 8), (5, 5), (-24, 8), (-30, -11)]
-for (px, py, lab), off in zip(pts, offs):
-    ax.annotate(lab, (px, py), textcoords="offset points", xytext=off,
+# the four points near parity sit within a factor of two of each other, so
+# their labels move into empty space with leader lines
+for px, py, lab in pts[:4]:
+    ax.annotate(lab, (px, py), textcoords="offset points", xytext=(5, 3),
                 fontsize=6.5, color=INK)
+for (px, py, lab), xy in zip(pts[4:], [(25, 1.4), (200, 3.2),
+                                        (200, 1.5), (40, 0.42)]):
+    ax.annotate(lab, (px, py), xytext=xy, fontsize=6.5, color=INK,
+                ha="right", va="center",
+                arrowprops=dict(arrowstyle="-", lw=0.4, color=MUT))
+ax.set_ylim(0.3, 7.0)
 ax.set_xscale("log")
 ax.set_xlabel("ball-level survivors (%)")
 ax.set_ylabel("ball-level gain over PCA-only")
