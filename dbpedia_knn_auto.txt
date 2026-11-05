@@ -1,19 +1,19 @@
-DBPEDIA_OPENAI_1M.NPY: 999,900 x 1536, 100 queries, levels [32, 80, 176, 352]; fit 345.2s
+DBPEDIA_OPENAI_1M.NPY: 999,900 x 1536, 100 queries, levels [32, 80, 176, 352]; fit 130.7s
 
   k=1 (exact on all 100 queries)
      method  ms/query  speedup   Mterms  Mbound  stage1-surv
-      brute    1931.2     1.0x  1535.85    0.00
-   pca-only     320.6     6.0x   119.57    0.00       63.58%
-     hybrid     376.8     5.1x   121.12    1.00       99.85%
+      brute    1722.2     1.0x  1535.85    0.00
+   pca-only     210.4     8.2x    82.96    0.00       63.58%
+     hybrid     258.2     6.7x    84.55    1.00       99.89%
 
   k=10 (exact on all 100 queries)
      method  ms/query  speedup   Mterms  Mbound  stage1-surv
-      brute    1938.4     1.0x  1535.85    0.00
-   pca-only     631.6     3.1x   262.93    0.00       91.65%
-     hybrid     670.1     2.9x   257.12    1.00       99.96%
+      brute    1722.6     1.0x  1535.85    0.00
+   pca-only     315.1     5.5x   127.20    0.00       89.99%
+     hybrid     359.8     4.8x   127.65    1.00       99.91%
 
   k=100 (exact on all 100 queries)
      method  ms/query  speedup   Mterms  Mbound  stage1-surv
-      brute    1975.0     1.0x  1535.85    0.00
-   pca-only    2523.8     0.8x  1229.11    0.00       99.97%
-     hybrid    1385.3     1.4x   599.39    1.00       99.99%
+      brute    1744.7     1.0x  1535.85    0.00
+   pca-only     444.3     3.9x   183.78    0.00       98.15%
+     hybrid     492.0     3.5x   189.01    1.00       99.94%

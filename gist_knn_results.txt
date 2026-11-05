@@ -1,19 +1,19 @@
-GIST: 1,000,000 x 960, 100 queries; fit 112.8s
+GIST: 1,000,000 x 960, 100 queries, levels [8, 16, 32, 64]; fit 67.0s
 
   k=1 (exact on all 100 queries)
      method  ms/query  speedup   Mterms  Mbound  stage1-surv
-      brute    1060.7     1.0x   960.00    0.00
-   pca-only     223.5     4.7x    73.16    0.00       37.72%
-     hybrid     262.9     4.0x    73.20    1.00       92.08%
+      brute    1096.5     1.0x   960.00    0.00
+   pca-only     190.1     5.8x    62.57    0.00       37.72%
+     hybrid     222.1     4.9x    62.96    1.00       92.18%
 
   k=10 (exact on all 100 queries)
      method  ms/query  speedup   Mterms  Mbound  stage1-surv
-      brute    1058.3     1.0x   960.00    0.00
-   pca-only     356.4     3.0x   144.14    0.00       50.25%
-     hybrid     401.3     2.6x   144.50    1.00       97.39%
+      brute    1071.7     1.0x   960.00    0.00
+   pca-only     212.1     5.1x    72.13    0.00       42.36%
+     hybrid     248.0     4.3x    73.14    1.00       95.01%
 
   k=100 (exact on all 100 queries)
      method  ms/query  speedup   Mterms  Mbound  stage1-surv
-      brute    1055.8     1.0x   960.00    0.00
-   pca-only    1302.6     0.8x   691.07    0.00       83.19%
-     hybrid     943.6     1.1x   449.58    1.00       99.99%
+      brute    1075.8     1.0x   960.00    0.00
+   pca-only     254.9     4.2x    92.01    0.00       46.46%
+     hybrid     297.2     3.6x    97.31    1.00       95.05%

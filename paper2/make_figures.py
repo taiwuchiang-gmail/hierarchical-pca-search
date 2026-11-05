@@ -92,7 +92,7 @@ plt.close(fig)
 stages = ["all", "ball", "8D", "16D", "32D", "64D"]
 x = np.arange(len(stages))
 pca = [1e6, np.nan, 147000, 52100, 7900, 600]
-hyb = [1e6, 506000, 145600, 50800, 7400, 500]
+hyb = [1e6, 488500, 144700, 49900, 7100, 400]     # hybrid_sift.txt
 fig, ax = plt.subplots(figsize=(3.4, 2.3))
 ax.plot(x[[0, 2, 3, 4, 5]], [pca[i] for i in (0, 2, 3, 4, 5)], "-o",
         color=BLUE, lw=2, ms=4, zorder=3, label="PCA-only")
@@ -104,7 +104,7 @@ ax.annotate("1,000,000", (0, 1e6), textcoords="offset points",
             xytext=(6, 4), fontsize=7, color=MUT)
 ax.annotate("600", (5, 600), textcoords="offset points",
             xytext=(-2, 8), fontsize=7, color=BLUE)
-ax.annotate("500", (5, 500), textcoords="offset points",
+ax.annotate("400", (5, 400), textcoords="offset points",
             xytext=(-4, -12), fontsize=7, color=ORANGE)
 ax.legend(frameon=False, fontsize=7.5)
 style(ax)
@@ -113,15 +113,15 @@ fig.savefig("fig_cascade.pdf")
 plt.close(fig)
 
 # --- Fig 3: the ball-value law -----------------------------------------------
-pts = [
-    (0.24, 6.6, "512 clusters"),
-    (2.98, 4.2, "512 clusters (60k)"),
-    (14.8, 2.65, "latent-8"),
-    (22.8, 1.9, "latent-8 (60k)"),
-    (50.6, 0.98, "SIFT1M"),
-    (59.4, 1.0, "SIFT1M (100k)"),
-    (99.9, 0.96, "i.i.d. (60k)"),
-    (100.0, 0.8, "latent-48 (60k)"),
+pts = [                     # hybrid_demo.txt, demo_funnel.txt, sift_5rep,
+    (0.23, 5.8, "512 clusters"),             # sift_funnel_auto.txt
+    (3.56, 4.7, "512 clusters (60k)"),
+    (13.25, 2.6, "latent-8"),
+    (25.4, 1.6, "latent-8 (60k)"),
+    (48.9, 0.99, "SIFT1M"),
+    (59.3, 0.91, "SIFT1M (100k)"),
+    (99.9, 0.93, "i.i.d. (60k)"),
+    (100.0, 0.82, "latent-48 (60k)"),
 ]
 fig, ax = plt.subplots(figsize=(3.4, 2.4))
 xs, ys = [p[0] for p in pts], [p[1] for p in pts]
@@ -131,9 +131,10 @@ ax.annotate("no effect", (0.3, 1.0), textcoords="offset points",
 ax.scatter(xs, ys, s=26, color=ORANGE, zorder=3)
 # the four points near parity sit within a factor of two of each other, so
 # their labels move into empty space with leader lines
-for px, py, lab in pts[:4]:
-    ax.annotate(lab, (px, py), textcoords="offset points", xytext=(5, 3),
-                fontsize=6.5, color=INK)
+for (px, py, lab), dx, ha in zip(pts[:4], (5, 5, 5, -5),
+                                 ("left", "left", "left", "right")):
+    ax.annotate(lab, (px, py), textcoords="offset points", xytext=(dx, 3),
+                fontsize=6.5, color=INK, ha=ha)
 for (px, py, lab), xy in zip(pts[4:], [(25, 1.4), (200, 3.2),
                                         (200, 1.5), (40, 0.42)]):
     ax.annotate(lab, (px, py), xytext=xy, fontsize=6.5, color=INK,

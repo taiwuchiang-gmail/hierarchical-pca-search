@@ -13,18 +13,18 @@
     -> non-Gaussian structure detected -- a k-means/ball level may exploit it
 
   Measured pruning cascade (avg over 100 queries, base 99,900):
-    after   32D:     85,894 candidates  ( 85.98%)
-    after   64D:     55,207 candidates  ( 55.26%)
-    after  128D:     12,830 candidates  ( 12.84%)
+    after   32D:     85,895 candidates  ( 85.98%)
+    after   64D:     55,209 candidates  ( 55.26%)
+    after  128D:     12,831 candidates  ( 12.84%)
     after  256D:        637 candidates  (  0.64%)
     full-D fetches (probe+finalists): 0.69% of base
     exactness: 100/100 match brute force
-    wall-clock speedup vs vectorized brute force: 5.0x (in-RAM sample; out-of-core I/O gain tracks the fetch %)
+    wall-clock speedup vs vectorized brute force: 7.1x (in-RAM sample; out-of-core I/O gain tracks the fetch %)
 
   Ball-level trial (k-means k=316, exact triangle-inequality bounds):
     ball stage prunes to 99.95% before any PCA stage
-    PCA-only 86.7 ms/query  vs  hybrid 95.4 ms/query  (0.9x from the ball level)
+    PCA-only 29.7 ms/query  vs  hybrid 33.7 ms/query  (0.9x from the ball level)
 
-  Work ratio (terms, hardware-independent): brute 153.4M / cascade 20.1M = 7.6x reduction
-  VERDICT: PCA levels: MODERATE -- useful gains, especially out-of-core.
+  Work ratio (terms, hardware-independent): brute 153.4M / cascade 12.2M = 12.6x reduction
+  VERDICT: PCA levels: STRONG  -- tight bounds; 13x less work, pruning will pay off.
            Ball level: SKIP -- no measured gain; ball bounds too loose on this data

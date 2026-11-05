@@ -1,0 +1,16 @@
+
+=== many tight clusters (PCA-hostile): 199,900 x 64, 100 queries ===
+  offline fit (PCA + k-means, k=447): 2.8s
+  exactness: all 100 queries match brute force
+     method  ms/query  speedup   Mterms  Mbound   survivors/stage
+      brute      19.3     1.0x   12.794   0.000   
+   pca-only       9.3     2.1x    1.633   0.000   8D:0.19%  16D:0.19%  32D:0.16%
+     hybrid       1.6    12.1x    0.069   0.200   ball:0.23%  8D:0.19%  16D:0.19%  32D:0.16%
+
+=== low-rank Gaussian (PCA-friendly): 199,900 x 64, 100 queries ===
+  offline fit (PCA + k-means, k=447): 2.3s
+  exactness: all 100 queries match brute force
+     method  ms/query  speedup   Mterms  Mbound   survivors/stage
+      brute      18.7     1.0x   12.794   0.000   
+   pca-only       8.8     2.1x    1.602   0.000   8D:0.00%  16D:0.00%  32D:0.00%
+     hybrid       3.4     5.6x    0.247   0.200   ball:13.25%  8D:0.00%  16D:0.00%  32D:0.00%

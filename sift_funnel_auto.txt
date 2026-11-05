@@ -1,0 +1,30 @@
+
+=== sift/sift_base.fvecs:  100,000 vectors, 128 dims,  cascade auto ===
+
+  Auto-selected cascade levels (eigen-curve targets [30, 50, 70, 85]% variance): [8, 16, 40]
+
+  Eigenvalue decay (cumulative explained variance = bound tightness):
+    first    8 dims:  58.5%  |#######################
+    first   16 dims:  70.3%  |############################
+    first   40 dims:  86.5%  |###################################
+    dims for 95% variance: 72 / 128
+
+  Beyond-covariance structure (invisible to the eigen curve):
+    kurt(PCA) = +0.20 (Gaussian = 0)   sqdep = 0.0323 (noise floor ~ 0.0045)
+    -> non-Gaussian structure detected -- a k-means/ball level may exploit it
+
+  Measured pruning cascade (avg over 100 queries, base 99,900):
+    after    8D:     20,655 candidates  ( 20.68%)
+    after   16D:      8,062 candidates  (  8.07%)
+    after   40D:        755 candidates  (  0.76%)
+    full-D fetches (probe+finalists): 0.81% of base
+    exactness: 100/100 match brute force
+    wall-clock speedup vs vectorized brute force: 3.4x (in-RAM sample; out-of-core I/O gain tracks the fetch %)
+
+  Ball-level trial (k-means k=316, exact triangle-inequality bounds):
+    ball stage prunes to 59.26% before any PCA stage
+    PCA-only 7.8 ms/query  vs  hybrid 8.6 ms/query  (0.9x from the ball level)
+
+  Work ratio (terms, hardware-independent): brute 12.8M / cascade 1.3M = 10.1x reduction
+  VERDICT: PCA levels: STRONG  -- tight bounds; 10x less work, pruning will pay off.
+           Ball level: SKIP -- no measured gain; ball bounds too loose on this data

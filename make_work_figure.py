@@ -4,8 +4,9 @@ clusters). Linear axis. This is the figure that separates the two
 cascades, which the survivor-count plot cannot: on clustered data the
 hybrid reaches the same survivors as PCA-only with far less work.
 
-SIFT numbers are Table 3 of the paper; the clustered numbers are from
-count_ops on the 512-cluster regime (make_work_figure prints them).
+SIFT numbers are Table 3 of the paper (bench_faiss_5rep.py); the
+clustered numbers are the Mterms/Mbound columns that `hybrid_search.py
+demo` prints for the 512-cluster regime (hybrid_demo.txt).
 Outputs pvldb/fig_work.pdf."""
 
 import matplotlib
@@ -18,9 +19,9 @@ BLUE, ORANGE = "#4C72B0", "#DD8452"
 # work per query, in millions; brute = n*d terms
 DATA = {
     "SIFT1M\n(tie)": dict(
-        brute=128.0, pca_terms=12.60, hyb_terms=8.67, hyb_bound=1.00),
+        brute=128.0, pca_terms=10.34, hyb_terms=6.29, hyb_bound=1.00),
     "512 clusters\n(add)": dict(
-        brute=12.79, pca_terms=1.642, hyb_terms=0.079, hyb_bound=0.200),
+        brute=12.794, pca_terms=1.633, hyb_terms=0.069, hyb_bound=0.200),
 }
 
 

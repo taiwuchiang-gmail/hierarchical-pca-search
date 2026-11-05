@@ -1,0 +1,20 @@
+setup: faiss add + hybrid fit done (11s fit)
+warm-up pass done
+rep 1/5 done
+rep 2/5 done
+rep 3/5 done
+rep 4/5 done
+rep 5/5 done
+
+                      method   median     min     max    GT
+      numpy brute, per-query    160.2   158.7   161.4    ok
+         pca-only, per-query     59.4    59.3    60.2    ok
+           hybrid, per-query     59.9    59.2    60.3    ok
+
+speedups vs numpy-brute median (160.2 ms): pca-only=2.7x, hybrid=2.7x
+
+work per query (terms = per-dimension (x-y)^2 evaluations):
+                method  terms (M)  bound ops (M)  terms vs brute
+    brute / faiss-flat      128.0             --            1.0x
+              pca-only      10.34           0.00           12.4x
+                hybrid       6.29           1.00           20.4x

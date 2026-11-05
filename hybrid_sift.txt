@@ -1,0 +1,8 @@
+
+=== SIFT1M (official queries): 1,000,000 x 128, 100 queries ===
+  offline fit (PCA + k-means, k=1024): 11.1s
+  exactness: all 100 queries match brute force
+     method  ms/query  speedup   Mterms  Mbound   survivors/stage
+      brute     163.9     1.0x  128.000   0.000   
+   pca-only      60.7     2.7x   10.340   0.000   8D:14.70%  16D:5.21%  32D:0.79%  64D:0.06%
+     hybrid      59.1     2.8x    6.289   1.000   ball:48.85%  8D:14.47%  16D:4.99%  32D:0.71%  64D:0.04%

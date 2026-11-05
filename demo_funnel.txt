@@ -1,0 +1,118 @@
+Synthetic demo: same n and d, three correlation levels.
+Watch the verdict flip as correlation (eigen-decay) weakens.
+
+=== high correlation (latent dim 8):  60,000 vectors, 128 dims,  cascade auto ===
+
+  Auto-selected cascade levels (eigen-curve targets [30, 50, 70, 85]% variance): [8]
+
+  Eigenvalue decay (cumulative explained variance = bound tightness):
+    first    8 dims:  99.9%  |########################################
+    dims for 95% variance: 8 / 128
+
+  Beyond-covariance structure (invisible to the eigen curve):
+    kurt(PCA) = +0.00 (Gaussian = 0)   sqdep = 0.0032 (noise floor ~ 0.0058)
+    -> none detected -- data is ~Gaussian given its covariance
+
+  Measured pruning cascade (avg over 100 queries, base 59,900):
+    after    8D:          1 candidates  (  0.00%)
+    full-D fetches (probe+finalists): 0.09% of base
+    exactness: 100/100 match brute force
+    wall-clock speedup vs vectorized brute force: 5.4x (in-RAM sample; out-of-core I/O gain tracks the fetch %)
+
+  Ball-level trial (k-means k=244, exact triangle-inequality bounds):
+    ball stage prunes to 25.40% before any PCA stage
+    PCA-only 3.6 ms/query  vs  hybrid 2.3 ms/query  (1.6x from the ball level)
+
+  Work ratio (terms, hardware-independent): brute 7.7M / cascade 0.5M = 15.8x reduction
+  VERDICT: PCA levels: STRONG  -- tight bounds; 16x less work, pruning will pay off.
+           Ball level: ADD -- measured 1.6x on top of the PCA cascade (cheap prefilter; bounds only moderately tight)
+
+=== medium correlation (latent dim 48):  60,000 vectors, 128 dims,  cascade auto ===
+
+  Auto-selected cascade levels (eigen-curve targets [30, 50, 70, 85]% variance): [8, 16, 24, 32]
+
+  Eigenvalue decay (cumulative explained variance = bound tightness):
+    first    8 dims:  33.9%  |##############
+    first   16 dims:  57.6%  |#######################
+    first   24 dims:  74.9%  |##############################
+    first   32 dims:  87.4%  |###################################
+    dims for 95% variance: 40 / 128
+
+  Beyond-covariance structure (invisible to the eigen curve):
+    kurt(PCA) = -0.00 (Gaussian = 0)   sqdep = 0.0032 (noise floor ~ 0.0058)
+    -> none detected -- data is ~Gaussian given its covariance
+
+  Measured pruning cascade (avg over 100 queries, base 59,900):
+    after    8D:     43,337 candidates  ( 72.35%)
+    after   16D:     14,300 candidates  ( 23.87%)
+    after   24D:      2,767 candidates  (  4.62%)
+    after   32D:        367 candidates  (  0.61%)
+    full-D fetches (probe+finalists): 0.70% of base
+    exactness: 100/100 match brute force
+    wall-clock speedup vs vectorized brute force: 2.2x (in-RAM sample; out-of-core I/O gain tracks the fetch %)
+
+  Ball-level trial (k-means k=244, exact triangle-inequality bounds):
+    ball stage prunes to 100.00% before any PCA stage
+    PCA-only 10.0 ms/query  vs  hybrid 12.2 ms/query  (0.8x from the ball level)
+
+  Work ratio (terms, hardware-independent): brute 7.7M / cascade 1.0M = 7.5x reduction
+  VERDICT: PCA levels: MODERATE -- useful gains, especially out-of-core.
+           Ball level: SKIP -- no measured gain; ball bounds too loose on this data
+
+=== no correlation (i.i.d. gaussian):  60,000 vectors, 128 dims,  cascade auto ===
+
+  Auto-selected cascade levels (eigen-curve targets [30, 50, 70, 85]% variance): [40, 64]
+
+  Eigenvalue decay (cumulative explained variance = bound tightness):
+    first   40 dims:  33.0%  |#############
+    first   64 dims:  52.0%  |#####################
+    dims for 95% variance: 122 / 128
+
+  Beyond-covariance structure (invisible to the eigen curve):
+    kurt(PCA) = -0.00 (Gaussian = 0)   sqdep = 0.0033 (noise floor ~ 0.0058)
+    -> none detected -- data is ~Gaussian given its covariance
+
+  Measured pruning cascade (avg over 100 queries, base 59,900):
+    after   40D:     59,877 candidates  ( 99.96%)
+    after   64D:     52,717 candidates  ( 88.01%)
+    full-D fetches (probe+finalists): 88.09% of base
+    exactness: 100/100 match brute force
+    wall-clock speedup vs vectorized brute force: 0.5x (in-RAM sample; out-of-core I/O gain tracks the fetch %)
+
+  Ball-level trial (k-means k=244, exact triangle-inequality bounds):
+    ball stage prunes to 99.90% before any PCA stage
+    PCA-only 23.5 ms/query  vs  hybrid 25.4 ms/query  (0.9x from the ball level)
+
+  Work ratio (terms, hardware-independent): brute 7.7M / cascade 10.6M = 0.7x reduction
+  VERDICT: PCA levels: POOR    -- bounds too loose (uncorrelated dimensions); use brute force / ANN instead.
+           Ball level: SKIP -- no measured gain; ball bounds too loose on this data
+
+=== 512 tight clusters (flat spectrum, non-Gaussian):  60,000 vectors, 128 dims,  cascade auto ===
+
+  Auto-selected cascade levels (eigen-curve targets [30, 50, 70, 85]% variance): [24, 40, 64]
+
+  Eigenvalue decay (cumulative explained variance = bound tightness):
+    first   24 dims:  34.1%  |##############
+    first   40 dims:  51.2%  |####################
+    first   64 dims:  71.2%  |############################
+    dims for 95% variance: 110 / 128
+
+  Beyond-covariance structure (invisible to the eigen curve):
+    kurt(PCA) = -0.00 (Gaussian = 0)   sqdep = 0.0346 (noise floor ~ 0.0058)
+    -> non-Gaussian structure detected -- a k-means/ball level may exploit it
+
+  Measured pruning cascade (avg over 100 queries, base 59,900):
+    after   24D:        118 candidates  (  0.20%)
+    after   40D:        118 candidates  (  0.20%)
+    after   64D:        117 candidates  (  0.19%)
+    full-D fetches (probe+finalists): 0.28% of base
+    exactness: 100/100 match brute force
+    wall-clock speedup vs vectorized brute force: 3.2x (in-RAM sample; out-of-core I/O gain tracks the fetch %)
+
+  Ball-level trial (k-means k=244, exact triangle-inequality bounds):
+    ball stage prunes to 3.56% before any PCA stage
+    PCA-only 3.8 ms/query  vs  hybrid 0.8 ms/query  (4.7x from the ball level)
+
+  Work ratio (terms, hardware-independent): brute 7.7M / cascade 1.5M = 5.2x reduction
+  VERDICT: PCA levels: MODERATE -- useful gains, especially out-of-core.
+           Ball level: ADD -- measured 4.7x on top of the PCA cascade (non-Gaussian structure harvested)

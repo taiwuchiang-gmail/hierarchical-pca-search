@@ -1,1 +1,4 @@
-sift device: sequential 2.04 GiB/s (8 MiB O_DIRECT), random 4 KiB 80 us
+sift device: sequential 1.85 GiB/s (8 MiB O_DIRECT), random 4 KiB 83 us
+gist device: sequential 1.87 GiB/s (8 MiB O_DIRECT), random 4 KiB 117 us
+sift device: sequential 1.86 GiB/s (8 MiB O_DIRECT), random 4 KiB 85 us
+gist device: sequential 1.84 GiB/s (8 MiB O_DIRECT), random 4 KiB 117 us

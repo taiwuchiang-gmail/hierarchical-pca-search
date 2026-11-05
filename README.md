@@ -23,17 +23,21 @@ cascade:
 Because neither bound helps on all data, the index **configures itself from a
 sample**: it picks the cascade widths from the eigenvalue curve, then a
 three-tier diagnostic ("statistics nominate, measurement decides") rules on
-each level. Exactness is verified on every query of every experiment.
+each level. Exactness is verified on every query of every in-RAM experiment.
 
 ### At a glance
-* **3.9–20.8× less work** than a brute-force scan for exact 1-NN across four
+* **5.4–26.9× less work** than a brute-force scan for exact 1-NN across four
   real datasets (96–1536 dimensions), with the wall-clock gain *growing* with
-  dimensionality (2.6× at 128-D → 6.2× at 960-D).
-* **Out of core:** exact cold-read queries run **7–17× faster** than a full
-  disk scan and read **40–730× fewer bytes**, because the fetch set
-  concentrates in a few k-means clusters.
-* **ANN-class RAM residency, exactly:** only 8–40 bytes/vector of metadata
-  stay resident (vs 512 B/vector for raw fp32), a 13–64× reduction.
+  dimensionality (2.7× at 128-D → 7.9–8.2× at 960–1536-D).
+* **Exact k-NN** still beats brute force at k=100 on all four datasets
+  (1.2–5.9×).
+* **Out of core:** exact cold-read queries run **2.5–19× faster** than our
+  full disk scan (1.4–11× against the drive's sequential-bandwidth limit) and
+  read **18–730× fewer bytes**, because the fetch set concentrates in a few
+  k-means clusters.
+* **Less RAM, still exact:** only the PCA sketch plus 16 bytes/vector of
+  metadata stay resident, 1.8–7.7× less than the raw fp32 data (272 vs
+  512 B/vector on SIFT1M).
 
 ### Papers
 * **Merged manuscript** (primary, PVLDB Vol. 20 format) —
@@ -159,21 +163,22 @@ the k-th best over distinct evaluated points.
 
 ### Results on four real datasets
 
-Exact 1-NN, eigen-curve-selected levels, PCA-only cascade. Work is counted in
+Exact 1-NN, eigen-curve-selected levels (SIFT1M: the fixed `(8,16,32,64)`
+ladder), PCA-only cascade. Work is counted in
 per-dimension distance terms; a brute-force scan is `n·d` terms by definition,
 so the "work reduction" column is hardware-independent. Every query is exact.
 
 | dataset | n × d | wall-clock | work reduction | funnel verdict |
 |---|---|---|---|---|
-| SIFT1M | 1M × 128 | 2.6× | 10.2× | STRONG |
-| GIST1M | 1M × 960 | **6.2×** | **20.8×** | STRONG |
-| DBpedia-OpenAI (ada-002) | 1M × 1536 | 6.0× | 12.8× | STRONG |
-| DEEP10M | 10M × 96 | 1.2× | 3.9× | MODERATE |
+| SIFT1M | 1M × 128 | 2.7× | 12.4× | STRONG |
+| GIST1M | 1M × 960 | 7.9× | **26.9×** | STRONG |
+| DBpedia-OpenAI (ada-002) | 1M × 1536 | **8.2×** | 18.5× | STRONG |
+| DEEP10M | 10M × 96 | 1.3× | 5.4× | MODERATE |
 
 The wall-clock gain *grows with dimensionality*: brute force pays the full
 dimension per point, while the cascade pays only for the data's intrinsic
-structure. k-NN wins up to k≈10 and honestly loses in RAM at k=100 (the
-pruning radius grows with k). The 1536-D OpenAI embeddings only prune once
+structure. k-NN still wins at k=100 on all four datasets (1.2–5.9×), though
+the gain shrinks as the pruning radius grows with k. The 1536-D OpenAI embeddings only prune once
 the cascade widths follow the eigen curve; with a fixed `(8,16,32,64)` ladder
 the same data reads as unprunable.
 
@@ -188,9 +193,9 @@ large reads:
 
 | dataset | scan | point-fetch | block-fetch | fewer bytes |
 |---|---|---|---|---|
-| DBpedia-OpenAI | 5385 ms | **318 ms (17×)** | 418 ms (13×) | 730× |
-| GIST1M | 3006 ms | 421 ms (7×) | 751 ms (4×) | 40× |
-| SIFT1M | 402 ms | 61 ms (7×) | 81 ms (5×) | 212× |
+| DBpedia-OpenAI | 5102 ms | **274 ms (19×)** | 384 ms (13×) | 730× |
+| GIST1M | 3241 ms | 731 ms (4×) | 780 ms (4×) | 40× |
+| SIFT1M | 464 ms | 78 ms (6×) | 79 ms (6×) | 238× |
 
 ```bash
 python ooc_bench.py build dbpedia_openai_1M.npy   # write the two-tier layout
@@ -212,12 +217,13 @@ your sample delivers the verdict (`ADD` / `SKIP`) — because the statistics
 nominate but the measurement decides. On SIFT the ball level's verdict is a
 `SKIP` (it prunes only ~50%, and the bound work cancels the saving — a
 wall-clock tie), while on clustered data with a flat eigen-spectrum the same
-level dominates (hybrid **13.9×** vs 2.1× for PCA-only).
+level dominates (hybrid **12.1×** vs 2.1× for PCA-only).
 
 A statistical baseline, ADSampling (SIGMOD 2023), is measured in the same work
-currency in [`adsampling_bench.py`](adsampling_bench.py): in RAM the two are
-mixed, but ADSampling must touch every vector (its Δd=32 floor), so it cannot
-leave RAM — where our deterministic bounds fetch only 0.06–1% of the vectors.
+currency in [`adsampling_bench.py`](adsampling_bench.py): in RAM our cascade
+does less work on three of the four datasets and ADSampling wins on the 1536-D
+embeddings. ADSampling's Δd=32 floor touches every vector, while out of core
+our deterministic bounds fetch only 0.05–1.2% of them.
 
 ## Understanding the Code
 
@@ -230,7 +236,11 @@ Both use a **Top-50 Probe**: at the coarsest representation (8D), the 50
 closest candidates get their full distance computed immediately. The minimum
 of those 50 is a mathematically guaranteed, tight radius for pruning the rest
 — safe from the first comparison on, with no prior knowledge of the neighbor
-distance.
+distance. For k-NN the probe holds 50 points per requested neighbor and the
+radius is the k-th smallest of them. Prefix distances accumulate
+incrementally (each level adds only its new coordinates), and every pruning
+test carries a small float32 rounding margin, so results match a float32
+brute-force scan exactly, near-duplicates included.
 
 ## Tests
 
