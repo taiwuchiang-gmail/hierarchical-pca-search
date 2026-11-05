@@ -15,7 +15,8 @@ import time
 
 import numpy as np
 
-from hybrid_search import PROBE_K, HybridIndex, count_ops, fvecs_read, ivecs_read
+from hybrid_search import (HybridIndex, count_ops, fvecs_read, ivecs_read,
+                           probe_size)
 
 K_VALUES = (1, 10, 100)
 N_QUERIES = 100
@@ -44,7 +45,7 @@ def run(name="sift", levels=(8, 16, 32, 64)):
         del base                 # only needed for the ground-truth tie check
 
     for k in K_VALUES:
-        probe = max(PROBE_K, k)
+        probe = probe_size(k, n)
         times = {"brute": 0.0, "pca-only": 0.0, "hybrid": 0.0}
         ops = {"pca-only": [], "hybrid": []}
         surv = {"pca-only": [], "hybrid": []}

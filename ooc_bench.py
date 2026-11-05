@@ -118,6 +118,7 @@ class OOCIndex(HybridIndex):
         self.levels = [int(x) for x in meta["levels"]]
         self.mean, self.rot = meta["mean"], meta["rot"]
         self.C, self.assign, self.d_p = meta["C"], meta["assign"], meta["d_p"]
+        self.dp_max = float(self.d_p.max())
         self.X = meta["sketch"]                     # (n, lmax) -- NOT full-D
         self.rank, self.offsets = meta["rank"], meta["offsets"]
         self.counts = meta["counts"]

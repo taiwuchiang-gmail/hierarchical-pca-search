@@ -32,6 +32,7 @@ import time
 import numpy as np
 
 PROBE_K = 50
+FP_TOL = 1e-5       # pruning-test rounding margin (as in hybrid_search)
 
 
 # --- Data loading -----------------------------------------------------------
@@ -75,9 +76,10 @@ def pick_levels(cum, targets=LEVEL_TARGETS):
     capped at d//2, duplicates dropped). A fixed ladder like [8,16,32,64]
     is implicitly calibrated for d~128: on 1536-D OpenAI embeddings it
     stops at 4% of the dimensions and the funnel misreads the data as
-    unprunable. Measured A/B vs hand-picked levels (100k samples):
-    SIFT 8.2x vs 8.5x (tie), GIST 15.2x vs 9.3x, DBpedia-OpenAI 8.2x
-    vs 7.6x -- the eigen curve nominates, the trial below still decides.
+    unprunable. Measured A/B of work ratios vs hand-picked levels (100k
+    samples): SIFT 10.1x vs 11.0x, GIST 19.6x vs 10.8x, DBpedia-OpenAI
+    12.6x vs 12.6x -- no fixed ladder wins everywhere; the eigen curve
+    nominates, the trial below still decides.
     """
     d = len(cum)
     cap = max(8, d // 2)
@@ -93,9 +95,9 @@ def pick_levels(cum, targets=LEVEL_TARGETS):
 # --- The pruning cascade (mirrors hierarchical_pca_1nn_l2 in benchmark.py) --
 
 def cascade_1nn(base_pca, query_pca, levels):
-    """Returns (best_idx, survivors-per-stage)."""
+    """Returns (best_idx, survivors-per-stage). Prefix sums are incremental
+    and every test carries the rounding margin, as in hybrid_search."""
     n = len(base_pca)
-    candidates = np.arange(n)
     survivors = []
 
     q8 = query_pca[:levels[0]]
@@ -104,14 +106,19 @@ def cascade_1nn(base_pca, query_pca, levels):
     exact = np.sum((base_pca[probe] - query_pca) ** 2, axis=1)
     best_dist = exact.min()
     best_idx = probe[exact.argmin()]
+    keep = best_dist * (1 + FP_TOL)
 
-    for i, k in enumerate(levels):
-        d = d8 if i == 0 else np.sum(
-            (base_pca[candidates, :k] - query_pca[:k]) ** 2, axis=1)
-        candidates = candidates[d < best_dist] if i else np.nonzero(d < best_dist)[0]
-        survivors.append(len(candidates))
+    candidates = np.nonzero(d8 < keep)[0]
+    acc = d8[candidates]
+    survivors.append(len(candidates))
+    for lo, k in zip(levels, levels[1:]):
         if not len(candidates):
             break
+        acc = acc + np.sum(
+            (base_pca[candidates, lo:k] - query_pca[lo:k]) ** 2, axis=1)
+        m = acc < keep
+        candidates, acc = candidates[m], acc[m]
+        survivors.append(len(candidates))
 
     if len(candidates):
         final = np.sum((base_pca[candidates] - query_pca) ** 2, axis=1)
@@ -269,11 +276,11 @@ def diagnose(X, levels=None, n_queries=100, name="data", plot=None, ball=True):
     # Verdict from the MEASURED work ratio, not the survivor fraction: the
     # same finalist % that is marginal at d=128 is a big win at d=960,
     # because the cascade's cost is early-stage terms + surv*d full fetches
-    # while brute always pays n*d (GIST: 6.9% finalists = 9x fewer terms).
+    # while brute always pays n*d (GIST: 6.9% finalists = 11x fewer terms).
     frac = surv[-1] / nb
     terms = nb * levels[0] + PROBE_K * d + surv[-1] * d
-    for s, lv in zip(surv[:-1], levels[1:]):
-        terms += s * lv
+    for s, lo, lv in zip(surv[:-1], levels, levels[1:]):
+        terms += s * (lv - lo)                  # incremental prefix sums
     work = nb * d / terms
     print(f"\n  Work ratio (terms, hardware-independent): brute {nb * d / 1e6:.1f}M"
           f" / cascade {terms / 1e6:.1f}M = {work:.1f}x reduction")

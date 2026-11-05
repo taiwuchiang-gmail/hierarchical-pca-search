@@ -67,6 +67,8 @@ def run(name, levels=(8, 16, 32, 64), n_clusters=1024, k_nn=1):
     print(f"  I/O reduction vs scan: point {scan_mb / pm:,.0f}x, "
           f"block {scan_mb / bm:,.0f}x; "
           f"reads/query: point {f:,.0f} small vs block {c:.0f} large")
+    print(f"  fetch set per query: median {np.median(fetched):,.0f}, "
+          f"mean {f:,.0f}, max {np.max(fetched):,} pts (heavy-tailed)")
 
 
 if __name__ == "__main__":

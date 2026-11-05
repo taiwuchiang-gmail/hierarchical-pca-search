@@ -10,21 +10,21 @@ from helpers import make_regime, split_queries
 def test_pca_only_hand_computed():
     # N=1000, levels=[8,16], d=32, probe=50, survivors 100 -> 10.
     # stage 1 (doubles as probe): 1000*8 + 50*32 = 9600
-    # stage 2: 100*16 = 1600; final full-D check: 10*32 = 320
+    # stage 2 adds dims 8..16 only: 100*8 = 800; final full-D check: 10*32
     terms, bound_ops = count_ops([1000, 100, 10], [8, 16], 32,
                                  use_ball=False)
-    assert terms == 9600 + 1600 + 320 == 11520
+    assert terms == 9600 + 800 + 320 == 10720
     assert bound_ops == 0
 
 
 def test_hybrid_hand_computed_with_reprobe():
     # N=1000, k=20 clusters, levels=[8,16], d=32, ball survivors 200.
     # centroids+probe: 20*32 + 50*32 = 2240; stage 1: 200*8 = 1600;
-    # re-probe (200 > 50): 50*32 = 1600; stage 2: 100*16 = 1600;
+    # re-probe (200 > 50): 50*32 = 1600; stage 2 (dims 8..16): 100*8 = 800;
     # final: 10*32 = 320. Ball bounds: one per point.
     terms, bound_ops = count_ops([1000, 200, 100, 10], [8, 16], 32,
                                  n_clusters=20, use_ball=True)
-    assert terms == 2240 + 1600 + 1600 + 1600 + 320 == 7360
+    assert terms == 2240 + 1600 + 1600 + 800 + 320 == 6560
     assert bound_ops == 1000
 
 
@@ -33,7 +33,7 @@ def test_hybrid_no_reprobe_when_ball_survivors_fit_in_probe():
     # NOT charged.
     terms, bound_ops = count_ops([1000, 40, 20, 10], [8, 16], 32,
                                  n_clusters=20, use_ball=True)
-    assert terms == 2240 + 40 * 8 + 20 * 16 + 10 * 32 == 3200
+    assert terms == 2240 + 40 * 8 + 20 * 8 + 10 * 32 == 3040
     assert bound_ops == 1000
 
 

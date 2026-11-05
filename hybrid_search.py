@@ -18,12 +18,16 @@ Query pipeline:
   1. k centroid distances (k << N full-D distances).
   2. Per-point ball bounds for ALL N points -- pure subtractions, no distance
      computations: |dq[assign] - d_p|.
-  3. Probe: exact distances to the PROBE points with smallest ball bounds
-     -> mathematically safe initial radius r (same trick as the paper's
-     Top-50 probe, but seeded by ball bounds instead of 8-D distances).
+  3. Probe: exact distances to the probe_size(k) points with smallest ball
+     bounds -> mathematically safe initial radius r (same trick as the
+     paper's Top-50 probe, but seeded by ball bounds instead of 8-D
+     distances).
   4. Ball pruning: keep points with ball bound < r.
   5. PCA cascade [8, 16, 32, 64] on the survivors (the paper's algorithm).
-  6. Full-D check on the final survivors. Result provably == brute force.
+     Each level adds only its new coordinates to the running prefix sum.
+  6. Full-D check on the final survivors. Result == brute force; every
+     pruning test carries a float32 rounding margin (FP_TOL) so this holds
+     in floating point too, near-duplicates included.
 
 Usage:
     python hybrid_search.py demo       # synthetic showcase: PCA-hostile
@@ -38,7 +42,25 @@ import time
 
 import numpy as np
 
-PROBE_K = 50
+PROBE_K = 50        # probe points per requested neighbor
+
+# Relative slack on every pruning test. A float32 prefix sum, a full
+# distance, and a centroid distance each carry a relative rounding error of
+# at most ~2e-6 for d <= 2048 (NumPy's pairwise summation), so a bound can
+# exceed the full distance it bounds by about that much. Pruning only when a
+# bound beats the radius by FP_TOL keeps the result identical to a float32
+# brute-force scan. Without it, near-duplicates (|q-c| and d_p nearly
+# cancel in the ball bound) can lose a true neighbor.
+FP_TOL = 1e-5
+
+
+def probe_size(k, n):
+    """Points evaluated exactly to seed the radius: the 1-NN Top-50 probe,
+    scaled per requested neighbor. The radius is the k-th smallest of them,
+    so a probe of only k points would make it the probe's maximum. SIFT1M,
+    k=100, PCA-only terms by probe size: 100 -> 63.1M, 400 -> 18.7M,
+    1600 -> 14.5M, 5000 -> 13.7M, 10000 -> 14.0M."""
+    return min(PROBE_K * k, n - 1)
 
 
 def ivecs_read(fname):
@@ -87,6 +109,10 @@ def count_ops(stats, levels, d, n_clusters=0, use_ball=True, probe=PROBE_K):
     each), charged separately because they are cheaper than a term but not
     free: work accounting must charge the pruning machinery itself.
     Both are hardware- and implementation-independent.
+
+    Prefix sums are incremental: a candidate entering a level pays only
+    the coordinates that level adds. The final check pays the full d (it
+    recomputes the distance so the result is bit-identical to brute force).
     """
     levels = list(levels)
     n = stats[0]
@@ -96,8 +122,10 @@ def count_ops(stats, levels, d, n_clusters=0, use_ball=True, probe=PROBE_K):
         terms = n_clusters * d + probe * d   # centroid dists + probe
         bound_ops = float(n)                 # one bound per point
         entering = st[1]                     # ball survivors enter stage 1
+        prev = 0
         for i, k_dims in enumerate(levels):
-            terms += entering * k_dims
+            terms += entering * (k_dims - prev)
+            prev = k_dims
             if i == 0 and entering > probe:
                 terms += probe * d           # radius re-probe
             entering = st[2 + i]
@@ -108,8 +136,10 @@ def count_ops(stats, levels, d, n_clusters=0, use_ball=True, probe=PROBE_K):
         terms = n * levels[0] + probe * d    # stage-1 scan doubles as probe
         bound_ops = 0.0
         entering = st[1]
+        prev = levels[0]
         for i, k_dims in enumerate(levels[1:]):
-            terms += entering * k_dims
+            terms += entering * (k_dims - prev)
+            prev = k_dims
             entering = st[2 + i]
         terms += st[-1] * d
     return float(terms), bound_ops
@@ -162,10 +192,13 @@ class HybridIndex:
 
         k = self.n_clusters or int(np.clip(np.sqrt(n), 64, 4096))
         self.C, self.assign = fit_kmeans(self.X, k)
-        diff = self.X - self.C[self.assign]
-        self.d_p = np.sqrt((diff ** 2).sum(1)).astype(np.float32)
+        self.d_p = np.empty(n, np.float32)                # in chunks, too
+        for i in range(0, n, chunk):
+            diff = self.X[i:i + chunk] - self.C[self.assign[i:i + chunk]]
+            self.d_p[i:i + chunk] = np.sqrt((diff ** 2).sum(1))
         self.R = np.zeros(k, np.float32)                  # cluster radii
         np.maximum.at(self.R, self.assign, self.d_p)
+        self.dp_max = float(self.d_p.max())               # ball-bound slack
         return self
 
     def _transform(self, q):
@@ -186,12 +219,17 @@ class HybridIndex:
         over a subset can only overestimate the true one, so any point whose
         lower bound reaches it provably cannot enter the k-NN set. Requires
         k < n (at least one prunable point).
+
+        Every test keeps a candidate unless its bound beats the radius by
+        the rounding margin FP_TOL: relative for the squared prefix sums,
+        and for the ball bound also absolute, scaled by |q-c| + d_p, since
+        those two cancel when q nearly duplicates a point.
         """
         q = self._transform(q_raw)
         X, N = self.X, len(self.X)
         if not 1 <= k < N:
             raise ValueError(f"k must be in [1, {N - 1}], got {k}")
-        n_probe = min(max(PROBE_K, k), N - 1)
+        n_probe = probe_size(k, N)
         stats = [N]
 
         if use_ball:
@@ -205,32 +243,38 @@ class HybridIndex:
         ev_idx = probe                                        # evaluated so far
         ev_d = self._exact(probe, q)
         radius, _, _ = _kth_smallest_unique(ev_idx, ev_d, k)  # k-th best
+        keep = radius * (1 + FP_TOL)
 
         if use_ball:
-            cand = np.flatnonzero(bound * bound < radius)     # ball pruning
-            stats.append(len(cand))
-            start = 0
+            slack = FP_TOL * (float(dq.max()) + self.dp_max)
+            cand = np.flatnonzero(bound < np.sqrt(keep) + slack)  # ball pruning
+            acc = np.zeros(len(cand), np.float32)             # prefix sums
+            done = 0                                          # dims in acc
         else:
             # reuse the stage-1 distances already computed for the probe --
             # no full-array gather (implementation parity with the ball path)
-            cand = np.flatnonzero(d8 < radius)
-            stats.append(len(cand))
-            start = 1
+            cand = np.flatnonzero(d8 < keep)
+            acc = d8[cand]
+            done = self.levels[0]
+        stats.append(len(cand))
 
         for i, k_dims in enumerate(self.levels):
-            if i < start or not len(cand):
-                if not len(cand):
-                    break
+            if not len(cand):
+                break
+            if k_dims <= done:
                 continue
-            dk = ((X[cand, :k_dims] - q[:k_dims]) ** 2).sum(1)
+            acc += ((X[cand, done:k_dims] - q[done:k_dims]) ** 2).sum(1)
+            done = k_dims
             if i == 0 and use_ball and len(cand) > n_probe:
                 # Re-probe: the ball-seeded radius can be loose; tighten it
                 # from the best first-stage candidates before pruning.
-                top = np.argpartition(dk, n_probe)[:n_probe]
+                top = np.argpartition(acc, n_probe)[:n_probe]
                 ev_idx = np.concatenate([ev_idx, cand[top]])
                 ev_d = np.concatenate([ev_d, self._exact(cand[top], q)])
                 radius, _, _ = _kth_smallest_unique(ev_idx, ev_d, k)
-            cand = cand[dk < radius]
+                keep = radius * (1 + FP_TOL)
+            m = acc < keep
+            cand, acc = cand[m], acc[m]
             stats.append(len(cand))
 
         if len(cand):
@@ -268,6 +312,8 @@ def bench(X, queries, name, n_clusters=None):
 
     times = {'brute': 0.0, 'pca-only': 0.0, 'hybrid': 0.0}
     stats = {'pca-only': [], 'hybrid': []}
+    ops = {'pca-only': [], 'hybrid': []}
+    d = X.shape[1]
     for q in queries:
         t0 = time.perf_counter(); b_idx, b_d = idx.brute(q)
         times['brute'] += time.perf_counter() - t0
@@ -278,13 +324,18 @@ def bench(X, queries, name, n_clusters=None):
         assert b_d == p_d == h_d, "exactness violated!"    # dist always unique
         stats['pca-only'].append(ps + [ps[-1]] * (len(idx.levels) + 2 - len(ps)))
         stats['hybrid'].append(hs + [hs[-1]] * (len(idx.levels) + 2 - len(hs)))
+        ops['pca-only'].append(count_ops(ps, idx.levels, d, use_ball=False))
+        ops['hybrid'].append(count_ops(hs, idx.levels, d,
+                                       n_clusters=len(idx.C), use_ball=True))
 
     n, nq = len(X), len(queries)
     print(f"  exactness: all {nq} queries match brute force")
-    print(f"  {'method':>9} {'ms/query':>9} {'speedup':>8}   survivors/stage")
+    print(f"  {'method':>9} {'ms/query':>9} {'speedup':>8} {'Mterms':>8} "
+          f"{'Mbound':>7}   survivors/stage")
     for m in ('brute', 'pca-only', 'hybrid'):
         ms = times[m] / nq * 1000
         sp = times['brute'] / times[m]
+        terms, bops = np.mean(ops[m], axis=0) if m in ops else (n * d, 0.0)
         surv = ""
         if m in stats:
             s = np.mean(stats[m], axis=0)
@@ -292,7 +343,8 @@ def bench(X, queries, name, n_clusters=None):
                      [f"{k}D" for k in idx.levels]
             surv = "  ".join(f"{l}:{v / n * 100:.2f}%"
                              for l, v in zip(labels, s[1:]))
-        print(f"  {m:>9} {ms:>9.1f} {sp:>7.1f}x   {surv}")
+        print(f"  {m:>9} {ms:>9.1f} {sp:>7.1f}x {terms / 1e6:>8.3f} "
+              f"{bops / 1e6:>7.3f}   {surv}")
 
 
 def demo():

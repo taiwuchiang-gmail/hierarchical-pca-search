@@ -3,11 +3,16 @@
 Timing hygiene: both indexes fit once; one untimed warm-up pass; then each
 configuration is timed over the 100 official queries, 5 repetitions; report
 median ms/query with min-max spread. Ground truth verified every rep.
+Without faiss installed, the FAISS rows are skipped.
 """
 import time
 
 import numpy as np
-import faiss
+
+try:
+    import faiss
+except ImportError:
+    faiss = None
 
 from hybrid_search import fvecs_read, ivecs_read, HybridIndex, count_ops
 
@@ -17,8 +22,9 @@ base = fvecs_read('sift/sift_base.fvecs')
 queries = fvecs_read('sift/sift_query.fvecs')[:100]
 gt = ivecs_read('sift/sift_groundtruth.ivecs')[:100, 0]
 
-findex = faiss.IndexFlatL2(base.shape[1])
-findex.add(base)
+if faiss is not None:
+    findex = faiss.IndexFlatL2(base.shape[1])
+    findex.add(base)
 hidx = HybridIndex(n_clusters=1024)
 t0 = time.perf_counter(); hidx.fit(base)
 print(f"setup: faiss add + hybrid fit done ({time.perf_counter()-t0:.0f}s fit)")
@@ -60,6 +66,8 @@ CONFIGS = [
     ("pca-only, per-query", lambda: ours(lambda q: hidx.query(q, use_ball=False)[0])),
     ("hybrid, per-query", lambda: ours(lambda q: hidx.query(q, use_ball=True)[0])),
 ]
+if faiss is None:
+    CONFIGS = [c for c in CONFIGS if not c[0].startswith("faiss")]
 
 # warm-up (untimed): touch every code path and page in all arrays
 for name, fn in CONFIGS:

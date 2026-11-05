@@ -5,7 +5,7 @@ invariant, k times over."""
 import numpy as np
 import pytest
 
-from hybrid_search import HybridIndex
+from hybrid_search import PROBE_K, HybridIndex, probe_size
 
 from helpers import make_regime, split_queries
 
@@ -70,3 +70,30 @@ def test_invalid_k_raises():
     for bad in (0, len(base), len(base) + 5):
         with pytest.raises(ValueError, match="k must be"):
             idx.query(queries[0], k=bad)
+
+
+def test_probe_size():
+    # 1-NN keeps the Top-50 probe; k-NN probes 50 points per neighbor so
+    # the k-th statistic is not the probe's maximum; never more than n-1.
+    assert probe_size(1, 10**6) == PROBE_K == 50
+    assert probe_size(10, 10**6) == 500
+    assert probe_size(100, 10**6) == 5000
+    assert probe_size(80, 200) == 199
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+@pytest.mark.parametrize("use_ball", [False, True])
+def test_near_duplicates_match_brute_force_in_float32(seed, use_ball):
+    # Few broad clusters around near-duplicate groups: |q-c| and d_p nearly
+    # cancel, so the computed ball bound can exceed the computed distance.
+    # Without the FP_TOL margin the ball path loses true neighbors on all
+    # three seeds.
+    # Copies that got the same nudge are exact ties, so only the distances
+    # are compared.
+    X = make_regime("neardup", n=2400, d=32, seed=seed)
+    idx = HybridIndex(n_clusters=4).fit(X)
+    for i in range(0, len(X), 160):
+        for k in (1, 10, 40):
+            _, b_d = idx.brute(X[i], k=k)
+            _, h_d, _ = idx.query(X[i], use_ball=use_ball, k=k)
+            assert np.array_equal(np.atleast_1d(h_d), np.atleast_1d(b_d))
