@@ -828,7 +828,9 @@ must hold every vector resident (512\,B/vector). The cascades can instead
 keep only their sketch resident and page full vectors from storage
 (\S\ref{sec:layout}, Table~\ref{tab:ooc}): the 64-dimensional sketch of
 the $(8,16,32,64)$ ladder costs 256\,B/vector, and the ball metadata
-costs 8\,B/vector. Parentheses give the RAM saving relative to a flat
+costs 8\,B/vector, which gives the hybrid 264\,B/vector with point
+fetches; the full layout's 8-byte row index into the cluster-major file
+brings this to the 272\,B/vector of Table~\ref{tab:ooc}. Parentheses give the RAM saving relative to a flat
 scan. The hybrid's work is written as distance terms plus ball bound-ops
 (as in Table~\ref{tab:ops}); the two are kept separate because a
 bound-op is cheaper than a term, so they are not summed. The last row
