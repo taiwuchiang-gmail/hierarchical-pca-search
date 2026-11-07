@@ -18,6 +18,7 @@ Usage:
   python ooc_bench.py build <dataset> [levels]   # fit + write layout
   python ooc_bench.py run   <dataset> [k]        # timed three-arm bench
   python ooc_bench.py disk  <dataset>            # device characterization
+  python ooc_bench.py fetch <dataset>            # per-query fetch statistics
 """
 
 import mmap
@@ -240,6 +241,35 @@ def disk(name):
     os.close(fd)
 
 
+def fetch(name):
+    """Fetch distribution of the point arm, on the same index and queries
+    as `run`. reads counts every vector read, so one that recurs across
+    probe, re-probe and finalists counts each time; points counts it once.
+    """
+    f_orig, f_cmaj, f_meta = _paths(name)
+    meta = np.load(f_meta)
+    fd_o = os.open(f_orig, os.O_RDONLY | os.O_DIRECT)
+    fd_c = os.open(f_cmaj, os.O_RDONLY | os.O_DIRECT)
+    idx = OOCIndex(meta, "point", fd_o, fd_c)
+    reads, points, clusters = [], [], []
+    for q in meta["queries"]:
+        r0 = idx.io[1]
+        idx.query(q, k=1)
+        ids = idx.last_fetched
+        reads.append(idx.io[1] - r0)
+        points.append(len(ids))
+        clusters.append(len(np.unique(idx.assign[ids])))
+    c = len(idx.C)
+    uniform = c * (1 - (1 - 1 / c) ** np.mean(points))
+    print(f"{name}: levels {idx.levels}, {len(reads)} queries, k=1")
+    for label, v in (("reads", reads), ("points", points)):
+        print(f"  {label:>6}: median {np.median(v):,.0f}, "
+              f"mean {np.mean(v):,.0f}, max {np.max(v):,}")
+    print(f"  clusters: mean {np.mean(clusters):.0f}/{c} "
+          f"(uniform placement would hit ~{uniform:.0f})")
+    os.close(fd_o), os.close(fd_c)
+
+
 if __name__ == "__main__":
     cmd, name = sys.argv[1], sys.argv[2]
     if cmd == "build":
@@ -251,3 +281,5 @@ if __name__ == "__main__":
         run(name, int(sys.argv[3]) if len(sys.argv) > 3 else 1)
     elif cmd == "disk":
         disk(name)
+    elif cmd == "fetch":
+        fetch(name)

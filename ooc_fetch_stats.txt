@@ -1,0 +1,16 @@
+sift: levels [8, 16, 32, 64], 100 queries, k=1
+   reads: median 152, mean 526, max 4,133
+  points: median 148, mean 520, max 4,122
+  clusters: mean 50/1024 (uniform placement would hit ~408)
+gist: levels [8, 16, 40, 120], 100 queries, k=1
+   reads: median 2,360, mean 12,381, max 137,880
+  points: median 2,334, mean 12,358, max 137,823
+  clusters: mean 131/1024 (uniform placement would hit ~1024)
+dbpedia_openai_1M.npy: levels [32, 80, 176, 352], 100 queries, k=1
+   reads: median 120, mean 1,028, max 45,694
+  points: median 110, mean 1,015, max 45,607
+  clusters: mean 27/1024 (uniform placement would hit ~644)
+deep10M.npy: levels [8, 24, 40, 48], 100 queries, k=1
+   reads: median 5,386, mean 50,360, max 1,014,321
+  points: median 5,380, mean 50,344, max 1,014,253
+  clusters: mean 195/1024 (uniform placement would hit ~1024)

@@ -1107,9 +1107,9 @@ on how much a device could stream in the time of one random read: about
 165\,KB on this NVMe drive (83\,\textmu s at 1.85\,GiB/s), but about
 1.5\,MB on a disk with a 10\,ms seek and 150\,MB/s of bandwidth. Seek-bound media therefore favor
 the scan and the block arm, not the point arm. \textbf{Second, the fetch
-set is highly cluster-local.} The embeddings' $\sim$1{,}015 fetched
+set is highly cluster-local.} The embeddings' $\sim$1{,}015 distinct fetched
 points occupy an average of 27 of 1024 clusters, while uniform placement
-would touch about 644. SIFT's 520 points occupy 50 clusters, against
+would touch about 644. SIFT's 520 distinct points occupy 50 clusters, against
 about 408 under uniform placement. The reason
 is that the nearest neighbors of a query are near each other. This
 locality is what makes the cluster-major arm viable at all. Whether it
@@ -1117,11 +1117,14 @@ pays depends on the fetch-set size: the block arm beats the point arm only
 on DEEP10M. \textbf{Third, point-versus-block is a device property.} The
 point arm issues one read at a time. Its scattered small fetches beat the
 block arm's fewer but heavier reads on three of the four datasets; only
-DEEP10M's fetch set flips the order. The mean fetch counts in
-Table~\ref{tab:ooc} are dominated by a minority of far-neighbor queries.
-In a refit of each index, the median query fetches 148 vectors on SIFT1M,
-2{,}334 on GIST1M, 110 on DBpedia-OpenAI, and 5{,}124 on DEEP10M, against
-means of 520, 12{,}360, 1{,}015, and 44{,}597. This is why the median times sit well below the
+DEEP10M's fetch set flips the order. The mean read counts in
+Table~\ref{tab:ooc} count a vector again when it recurs across the probe,
+re-probe, and finalists, so they slightly exceed the distinct points
+above, and they are dominated by a minority of far-neighbor queries.
+The median query issues 152 reads on SIFT1M,
+2{,}360 on GIST1M, 120 on DBpedia-OpenAI, and 5{,}386 on DEEP10M, against
+means of 526, 12{,}381, 1{,}028, and 50{,}360. This heavy tail is why the
+median times on GIST1M and DEEP10M sit well below the
 mean read count times the per-read latency. Parallel small reads would extend the
 point arm's advantage, since NVMe queue depths reward exactly that
 pattern. Seek-bound media would flip every row toward block. The layout
@@ -1130,7 +1133,7 @@ writes both files, so the diagnostic should pick per device.
 One design lesson surfaced only here: \emph{cascade depth matters far more
 out of core than in RAM}. On SIFT1M the eigen-curve rule stops at
 $(8,16,40)$, because the 85\% target is reached at 40 dimensions. Those
-levels fetch 3{,}132 points. The deeper $(8,16,32,64)$ ladder fetches only
+levels issue 3{,}132 reads. The deeper $(8,16,32,64)$ ladder issues only
 526 and wins the cold-read benchmark (78 vs.\ 106\,ms for the point arm). In RAM the same
 change saves only 5\% of the terms (10.3 vs.\ 10.9\,M), because a
 finalist costs $d$ terms there but a random read here. The

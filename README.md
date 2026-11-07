@@ -200,6 +200,7 @@ large reads:
 ```bash
 python ooc_bench.py build dbpedia_openai_1M.npy   # write the two-tier layout
 python ooc_bench.py run   dbpedia_openai_1M.npy    # timed 3-arm cold-read bench
+python ooc_bench.py fetch dbpedia_openai_1M.npy    # per-query fetch statistics
 python locality_stats.py  gist auto                # how cluster-local is the fetch set?
 ```
 
